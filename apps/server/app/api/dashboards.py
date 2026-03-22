@@ -44,9 +44,10 @@ def _validate_filter_value(v: str) -> str:
     return v.replace("'", "''")
 
 
-def _apply_filters_to_query(sql: str, filters: dict[str, str]) -> str:
+def _build_filtered_table(table_name: str, filters: dict[str, str]) -> str:
+    """Inject filters at source table level so aggregations still work."""
     if not filters:
-        return sql
+        return table_name
     clauses = []
     for field, value in filters.items():
         try:
@@ -55,9 +56,9 @@ def _apply_filters_to_query(sql: str, filters: dict[str, str]) -> str:
             continue
         clauses.append(f'"{field}" = \'{safe_val}\'')
     if not clauses:
-        return sql
+        return table_name
     where = " AND ".join(clauses)
-    return f"WITH __filtered AS ({sql}) SELECT * FROM __filtered WHERE {where}"
+    return f"(SELECT * FROM {table_name} WHERE {where}) AS {table_name}"
 
 
 async def _get_dataset_or_404(dataset_id: uuid.UUID, db: AsyncSession) -> Dataset:
@@ -80,8 +81,8 @@ async def _run_widget_query(
     db: AsyncSession,
 ) -> tuple[str, WidgetResult]:
     try:
-        sql = raw_query.replace("{table}", table_name)
-        sql = _apply_filters_to_query(sql, filters)
+        filtered_table = _build_filtered_table(table_name, filters)
+        sql = raw_query.replace("{table}", filtered_table)
 
         resolver = PermissionResolver(db)
         resolved = await resolver.resolve(
