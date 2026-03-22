@@ -6,8 +6,10 @@ import {
   EditOutlined,
   EllipsisOutlined,
   FilterOutlined,
+  MessageOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SendOutlined,
 } from '@ant-design/icons'
 import {
   Button,
@@ -25,7 +27,7 @@ import {
   message,
 } from 'antd'
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import ChartWidget from '../components/ChartWidget'
 import { dashboardApi, datasetsApi, queryApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
@@ -70,11 +72,13 @@ const GROUP_LABEL: Record<string, string> = {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const cardStyle: React.CSSProperties = {
-  background: '#FFFFFF',
-  borderRadius: 16,
-  padding: '20px 24px',
-  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-  border: '1px solid #E8ECF3',
+  background:         'var(--bg-glass)',
+  backdropFilter:     'blur(16px)',
+  WebkitBackdropFilter: 'blur(16px)',
+  borderRadius:       20,
+  padding:            '20px 24px',
+  boxShadow:          'var(--bg-glass-shadow)',
+  border:             '1px solid var(--bg-glass-border)',
 }
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
@@ -599,6 +603,7 @@ function AddChartModal({
 
 export default function DashboardPage() {
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const isAdmin = user?.role === 'admin'
 
@@ -616,6 +621,7 @@ export default function DashboardPage() {
   const [showRename, setShowRename] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [renameSaving, setRenameSaving] = useState(false)
+  const [quickQuery, setQuickQuery] = useState('')
   const initRef = useRef(false)
 
   useEffect(() => {
@@ -800,19 +806,21 @@ export default function DashboardPage() {
     : []
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#F8F9FC' }}>
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'transparent' }}>
 
       {/* ── Header Row 1 ── */}
       <div
         style={{
-          background: '#FFFFFF',
-          borderBottom: dashboardFilters.length > 0 ? 'none' : '1px solid #E8ECF3',
-          padding: '0 24px',
-          height: 60,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          flexShrink: 0,
+          background:         'var(--bg-glass)',
+          backdropFilter:     'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          borderBottom:       `1px solid var(--bg-glass-border)`,
+          padding:            '0 24px',
+          height:             60,
+          display:            'flex',
+          alignItems:         'center',
+          gap:                12,
+          flexShrink:         0,
         }}
       >
         <BarChartOutlined style={{ color: '#6C5CE7', fontSize: 18 }} />
@@ -942,7 +950,7 @@ export default function DashboardPage() {
       )}
 
       {/* ── Content ── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: 24, paddingBottom: 96 }}>
 
         {/* No dashboards at all */}
         {!selectedDashboard && !loading && (
@@ -1070,6 +1078,66 @@ export default function DashboardPage() {
             )}
           </>
         )}
+      </div>
+
+      {/* ── Floating input bar ── */}
+      <div
+        style={{
+          position:     'fixed',
+          bottom:       20,
+          left:         88,
+          right:        20,
+          zIndex:       50,
+          pointerEvents: selectedDashboard ? 'auto' : 'none',
+          opacity:      selectedDashboard ? 1 : 0,
+          transition:   'opacity 0.2s',
+        }}
+      >
+        <div
+          className="glass-card"
+          style={{
+            display:    'flex',
+            alignItems: 'center',
+            gap:        12,
+            padding:    '10px 16px',
+            borderRadius: 16,
+          }}
+        >
+          <MessageOutlined style={{ color: 'var(--text-tertiary)', fontSize: 15, flexShrink: 0 }} />
+          <input
+            value={quickQuery}
+            onChange={(e) => setQuickQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && quickQuery.trim() && selectedDashboard) {
+                navigate(`/chat?q=${encodeURIComponent(quickQuery)}&dataset_id=${selectedDashboard.dataset_id}`)
+                setQuickQuery('')
+              }
+            }}
+            placeholder="向 AI 提问数据…按 Enter 进入对话"
+            style={{
+              flex:       1,
+              border:     'none',
+              background: 'transparent',
+              outline:    'none',
+              fontSize:   14,
+              color:      'var(--text-primary)',
+              fontFamily: 'inherit',
+            }}
+          />
+          <Button
+            type="primary"
+            size="small"
+            icon={<SendOutlined />}
+            disabled={!quickQuery.trim()}
+            onClick={() => {
+              if (quickQuery.trim() && selectedDashboard) {
+                navigate(`/chat?q=${encodeURIComponent(quickQuery)}&dataset_id=${selectedDashboard.dataset_id}`)
+                setQuickQuery('')
+              }
+            }}
+            style={{ background: '#6C5CE7', border: 'none', borderRadius: 10, flexShrink: 0 }}
+          />
+        </div>
       </div>
 
       {/* ── Modals ── */}

@@ -2,48 +2,60 @@ import {
   DashboardOutlined,
   LockOutlined,
   MessageOutlined,
+  MoonOutlined,
   ShopOutlined,
+  SunOutlined,
   UploadOutlined,
 } from '@ant-design/icons'
-import { Typography } from 'antd'
 import type { ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { authApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
-
-const { Text } = Typography
+import { useThemeStore } from '../stores/themeStore'
+import ParticleBackground, { type ParticleSystemRef } from './ParticleBackground'
 
 const ROLE_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
-  admin:   { label: '管理员',   bg: '#F0EEFF', color: '#6C5CE7' },
-  analyst: { label: '分析师',   bg: '#EFF6FF', color: '#3B82F6' },
-  viewer:  { label: '查看者',   bg: '#F0FDF4', color: '#00C48C' },
-  partner: { label: '合作伙伴', bg: '#FFF7ED', color: '#F97316' },
+  admin:   { label: '管理员',   bg: 'rgba(108,92,231,0.15)', color: '#A29BFE' },
+  analyst: { label: '分析师',   bg: 'rgba(59,130,246,0.15)', color: '#60A5FA' },
+  viewer:  { label: '查看者',   bg: 'rgba(0,196,140,0.15)',  color: '#00C48C' },
+  partner: { label: '合作伙伴', bg: 'rgba(249,115,22,0.15)', color: '#FB923C' },
 }
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuthStore()
+  const { theme, toggleTheme } = useThemeStore()
+  const particleRef = useRef<ParticleSystemRef>(null)
+  const [isExpanded, setIsExpanded] = useState(false)
 
-  const role = user?.role ?? ''
-  const roleCfg = ROLE_CONFIG[role] ?? { label: role, bg: '#F1F3F9', color: '#5F6B7A' }
-  const isAdmin = role === 'admin'
-  const canUpload = role === 'admin' || role === 'analyst'
+  const isDark = theme === 'dark'
+  const role   = user?.role ?? ''
+  const roleCfg = ROLE_CONFIG[role] ?? { label: role, bg: 'rgba(100,100,100,0.1)', color: '#9CA3B4' }
+  const isAdmin    = role === 'admin'
+  const canUpload  = role === 'admin' || role === 'analyst'
+  const initial    = user?.name?.[0]?.toUpperCase() ?? 'U'
+
+  // Sync theme to particle system
+  useEffect(() => {
+    particleRef.current?.setTheme(theme)
+  }, [theme])
 
   const MENU_GROUPS = [
     {
       label: 'MENU',
       items: [
-        { key: '/upload', icon: <UploadOutlined />, label: '上传数据', enabled: canUpload, visible: canUpload },
-        { key: '/chat', icon: <MessageOutlined />, label: '数据对话', enabled: true, visible: true },
-        { key: '/dashboard', icon: <DashboardOutlined />, label: '看板', enabled: true, visible: true },
+        { key: '/upload',      icon: <UploadOutlined />,    label: '上传数据',   enabled: canUpload,  visible: canUpload },
+        { key: '/chat',        icon: <MessageOutlined />,   label: '数据对话',   enabled: true,       visible: true },
+        { key: '/dashboard',   icon: <DashboardOutlined />, label: '数据看板',   enabled: true,       visible: true },
       ],
     },
     {
       label: 'SETTINGS',
       items: [
-        { key: '/permissions', icon: <LockOutlined />, label: '权限管理', enabled: isAdmin, visible: isAdmin },
-        { key: '/marketplace', icon: <ShopOutlined />, label: '看板市场', enabled: false, visible: true },
+        { key: '/permissions', icon: <LockOutlined />,  label: '权限管理', enabled: isAdmin, visible: isAdmin },
+        { key: '/marketplace', icon: <ShopOutlined />,  label: '看板市场', enabled: false,   visible: true },
       ],
     },
   ]
@@ -54,119 +66,207 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     navigate('/login')
   }
 
-  const initial = user?.name?.[0]?.toUpperCase() ?? 'U'
+  // CSS-variable-based sidebar colors
+  const sidebarBg     = isDark ? 'rgba(16, 18, 28, 0.96)'  : 'rgba(255, 255, 255, 0.96)'
+  const sidebarBorder = isDark ? 'rgba(255,255,255,0.05)'  : 'rgba(0,0,0,0.06)'
+  const textPrimary   = isDark ? '#E8ECF3' : '#1A1D2E'
+  const textSecondary = isDark ? '#9CA3B4' : '#5F6B7A'
+  const textTertiary  = isDark ? '#5F6B7A' : '#9CA3B4'
+  const activeItemBg  = isDark ? 'rgba(162,155,254,0.12)' : '#F0EEFF'
+  const activeItemColor = isDark ? '#A29BFE' : '#6C5CE7'
+  const hoverBg       = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'
+  const dividerColor  = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'
+  const primaryColor  = isDark ? '#A29BFE' : '#6C5CE7'
+
+  // Transition style for collapsible text elements
+  const labelStyle = (extraStyle?: React.CSSProperties): React.CSSProperties => ({
+    maxWidth:    isExpanded ? 180 : 0,
+    overflow:    'hidden',
+    opacity:     isExpanded ? 1 : 0,
+    whiteSpace:  'nowrap',
+    transition:  isExpanded
+      ? 'max-width 0.25s cubic-bezier(0.4,0,0.2,1), opacity 0.15s ease 0.08s'
+      : 'max-width 0.2s cubic-bezier(0.4,0,0.2,1), opacity 0.1s ease',
+    flexShrink: 0,
+    ...extraStyle,
+  })
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <>
+      {/* ── Particle canvas (fixed, z-index 0) ── */}
+      <ParticleBackground ref={particleRef} />
+
+      {/* ── Overlay when sidebar is expanded ── */}
+      {isExpanded && (
+        <div
+          style={{
+            position:   'fixed',
+            left:       64,
+            right:      0,
+            top:        0,
+            bottom:     0,
+            zIndex:     99,
+            background: 'rgba(0,0,0,0.06)',
+            cursor:     'default',
+          }}
+          onClick={() => setIsExpanded(false)}
+        />
+      )}
+
       {/* ── Sidebar ── */}
       <div
         style={{
-          width: 240,
-          flexShrink: 0,
-          background: '#FFFFFF',
-          borderRight: '1px solid #E8ECF3',
-          position: 'fixed',
-          left: 0,
-          top: 0,
-          bottom: 0,
-          zIndex: 100,
-          display: 'flex',
+          position:   'fixed',
+          left:       0,
+          top:        0,
+          bottom:     0,
+          width:      isExpanded ? 240 : 64,
+          transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
+          background: sidebarBg,
+          borderRight: `1px solid ${sidebarBorder}`,
+          zIndex:     100,
+          display:    'flex',
           flexDirection: 'column',
+          overflow:   'hidden',
         }}
+        onMouseEnter={() => setIsExpanded(true)}
+        onMouseLeave={() => setIsExpanded(false)}
       >
         {/* Logo */}
-        <div style={{ padding: '20px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div
+          style={{
+            height:     60,
+            display:    'flex',
+            alignItems: 'center',
+            padding:    '0 18px',
+            gap:        10,
+            flexShrink: 0,
+            borderBottom: `1px solid ${dividerColor}`,
+          }}
+        >
           <div
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: '#6C5CE7',
-              display: 'flex',
-              alignItems: 'center',
+              width:          28,
+              height:         28,
+              borderRadius:   8,
+              background:     'linear-gradient(135deg, #6C5CE7 0%, #A29BFE 100%)',
+              display:        'flex',
+              alignItems:     'center',
               justifyContent: 'center',
-              color: '#fff',
-              fontSize: 14,
-              fontWeight: 700,
-              flexShrink: 0,
+              color:          '#fff',
+              fontSize:       13,
+              fontWeight:     700,
+              flexShrink:     0,
+              boxShadow:      '0 2px 8px rgba(108,92,231,0.35)',
             }}
           >
             M
           </div>
-          <Text style={{ fontSize: 16, fontWeight: 600, color: '#2D3142' }}>MetadataHub</Text>
+          <span
+            style={{
+              ...labelStyle({ fontSize: 15, fontWeight: 600, color: textPrimary }),
+            }}
+          >
+            MetadataHub
+          </span>
         </div>
 
         {/* Nav */}
-        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingTop: 8, paddingBottom: 8 }}>
           {MENU_GROUPS.map((group) => (
             <div key={group.label}>
+              {/* Group label */}
               <div
                 style={{
-                  padding: '16px 16px 8px',
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: '#9CA3B4',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
+                  ...labelStyle({
+                    padding:       '14px 20px 6px',
+                    display:       'block',
+                    fontSize:      10,
+                    fontWeight:    600,
+                    color:         textTertiary,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.8px',
+                  }),
                 }}
               >
                 {group.label}
               </div>
+
               {group.items.filter((i) => i.visible).map((item) => {
                 const active = location.pathname === item.key
                 return (
                   <div
                     key={item.key}
                     onClick={() => item.enabled && navigate(item.key)}
+                    title={!isExpanded ? item.label : undefined}
                     style={{
-                      height: 42,
-                      margin: '0 8px 2px',
-                      padding: '0 12px',
-                      borderRadius: 12,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      cursor: item.enabled ? 'pointer' : 'not-allowed',
-                      background: active ? '#F0EEFF' : 'transparent',
-                      color: active ? '#6C5CE7' : item.enabled ? '#5F6B7A' : '#C4CBD6',
-                      fontWeight: active ? 500 : 400,
-                      fontSize: 14,
-                      position: 'relative',
-                      transition: 'background 0.15s',
+                      height:         44,
+                      margin:         '1px 8px',
+                      padding:        isExpanded ? '0 12px' : '0',
+                      borderRadius:   12,
+                      display:        'flex',
+                      alignItems:     'center',
+                      justifyContent: isExpanded ? 'flex-start' : 'center',
+                      gap:            isExpanded ? 10 : 0,
+                      cursor:         item.enabled ? 'pointer' : 'not-allowed',
+                      background:     active ? activeItemBg : 'transparent',
+                      color:          active ? activeItemColor : item.enabled ? textSecondary : textTertiary,
+                      fontWeight:     active ? 500 : 400,
+                      fontSize:       14,
+                      position:       'relative',
+                      transition:     'background 0.15s, color 0.15s',
+                      userSelect:     'none',
                     }}
                     onMouseEnter={(e) => {
                       if (!active && item.enabled)
-                        (e.currentTarget as HTMLDivElement).style.background = '#F8F9FC'
+                        (e.currentTarget as HTMLDivElement).style.background = hoverBg
                     }}
                     onMouseLeave={(e) => {
                       if (!active)
                         (e.currentTarget as HTMLDivElement).style.background = 'transparent'
                     }}
                   >
-                    {active && (
+                    {/* Active left-bar indicator */}
+                    {active && isExpanded && (
                       <div
                         style={{
-                          position: 'absolute',
-                          left: 0,
-                          top: '20%',
-                          bottom: '20%',
-                          width: 3,
+                          position:     'absolute',
+                          left:         0,
+                          top:          '18%',
+                          bottom:       '18%',
+                          width:        3,
                           borderRadius: '0 3px 3px 0',
-                          background: '#6C5CE7',
+                          background:   primaryColor,
                         }}
                       />
                     )}
-                    <span style={{ fontSize: 16 }}>{item.icon}</span>
-                    <span>{item.label}</span>
+                    {/* Active dot indicator (collapsed) */}
+                    {active && !isExpanded && (
+                      <div
+                        style={{
+                          position:     'absolute',
+                          bottom:       6,
+                          left:         '50%',
+                          transform:    'translateX(-50%)',
+                          width:        4,
+                          height:       4,
+                          borderRadius: '50%',
+                          background:   primaryColor,
+                        }}
+                      />
+                    )}
+                    <span style={{ fontSize: 15, flexShrink: 0, lineHeight: 1 }}>{item.icon}</span>
+                    <span style={labelStyle({ flex: 1 })}>{item.label}</span>
                     {!item.enabled && (
                       <span
                         style={{
-                          marginLeft: 'auto',
-                          fontSize: 10,
-                          color: '#C4CBD6',
-                          background: '#F1F3F9',
-                          borderRadius: 4,
-                          padding: '1px 6px',
+                          ...labelStyle({
+                            fontSize:   10,
+                            color:      textTertiary,
+                            background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F3F9',
+                            borderRadius: 4,
+                            padding:    '1px 6px',
+                          }),
                         }}
                       >
                         即将上线
@@ -179,84 +279,105 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           ))}
         </div>
 
-        {/* User */}
+        {/* Bottom: theme toggle + user */}
         <div
           style={{
-            borderTop: '1px solid #E8ECF3',
-            padding: 16,
+            borderTop: `1px solid ${dividerColor}`,
+            padding:   '8px 8px 12px',
+            flexShrink: 0,
           }}
         >
-          {/* Role tag */}
-          <div style={{ marginBottom: 10 }}>
-            <span
-              style={{
-                display: 'inline-block',
-                padding: '2px 10px',
-                borderRadius: 20,
-                fontSize: 11,
-                fontWeight: 500,
-                background: roleCfg.bg,
-                color: roleCfg.color,
-              }}
-            >
-              {roleCfg.label}
+          {/* Theme toggle */}
+          <div
+            onClick={toggleTheme}
+            title={!isExpanded ? (isDark ? '切换亮色' : '切换暗色') : undefined}
+            style={{
+              height:         40,
+              padding:        isExpanded ? '0 12px' : '0',
+              borderRadius:   12,
+              display:        'flex',
+              alignItems:     'center',
+              justifyContent: isExpanded ? 'flex-start' : 'center',
+              gap:            isExpanded ? 10 : 0,
+              cursor:         'pointer',
+              color:          textSecondary,
+              fontSize:       13,
+              marginBottom:   4,
+              transition:     'background 0.15s',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = hoverBg }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+          >
+            <span style={{ fontSize: 15, flexShrink: 0 }}>
+              {isDark ? <SunOutlined style={{ color: '#FFB946' }} /> : <MoonOutlined style={{ color: '#6C5CE7' }} />}
             </span>
+            <span style={labelStyle()}>{isDark ? '切换亮色' : '切换暗色'}</span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* User info */}
+          <div
+            style={{
+              display:    'flex',
+              alignItems: 'center',
+              gap:        10,
+              padding:    '6px 6px 0',
+              borderTop:  `1px solid ${dividerColor}`,
+              marginTop:  4,
+            }}
+          >
             <div
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                background: '#6C5CE7',
-                display: 'flex',
-                alignItems: 'center',
+                width:          32,
+                height:         32,
+                borderRadius:   '50%',
+                background:     'linear-gradient(135deg, #6C5CE7 0%, #A29BFE 100%)',
+                display:        'flex',
+                alignItems:     'center',
                 justifyContent: 'center',
-                color: '#fff',
-                fontSize: 14,
-                fontWeight: 600,
-                flexShrink: 0,
+                color:          '#fff',
+                fontSize:       13,
+                fontWeight:     600,
+                flexShrink:     0,
+                cursor:         'default',
+                boxShadow:      '0 2px 6px rgba(108,92,231,0.3)',
               }}
             >
               {initial}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: '#2D3142',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
+
+            <div style={labelStyle({ flex: 1, minWidth: 0 })}>
+              <div style={{ fontSize: 12, fontWeight: 500, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {user?.name ?? 'User'}
               </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: '#9CA3B4',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {user?.email ?? ''}
+              <div style={{ fontSize: 10, color: textTertiary, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <span
+                  style={{
+                    background:   roleCfg.bg,
+                    color:        roleCfg.color,
+                    borderRadius: 10,
+                    padding:      '1px 6px',
+                    fontSize:     10,
+                    fontWeight:   500,
+                  }}
+                >
+                  {roleCfg.label}
+                </span>
               </div>
             </div>
+
             <button
               onClick={handleLogout}
               style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: '#9CA3B4',
-                fontSize: 12,
-                padding: '4px 6px',
-                borderRadius: 6,
-                flexShrink: 0,
+                ...labelStyle({
+                  background:   'none',
+                  border:       'none',
+                  cursor:       'pointer',
+                  color:        textTertiary,
+                  fontSize:     11,
+                  padding:      '3px 6px',
+                  borderRadius: 6,
+                  flexShrink:   0,
+                }) as React.CSSProperties,
               }}
             >
               退出
@@ -265,10 +386,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </div>
 
-      {/* ── Main content ── */}
-      <div style={{ marginLeft: 240, flex: 1, background: '#F8F9FC', minHeight: '100vh' }}>
+      {/* ── Main content (always offset 64px) ── */}
+      <div
+        style={{
+          marginLeft: 64,
+          minHeight:  '100vh',
+          position:   'relative',
+          zIndex:     1,
+        }}
+      >
         {children}
       </div>
-    </div>
+    </>
   )
 }

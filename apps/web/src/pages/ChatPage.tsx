@@ -126,13 +126,12 @@ function AssistantBubble({ message: msg, onSave }: { message: ChatMessage; onSav
       <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
         <AIAvatar />
         <div
+          className="glass-card"
           style={{
-            background: '#FFFFFF',
-            borderRadius: '16px 16px 16px 4px',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
-            padding: '16px 20px',
-            display: 'flex',
-            alignItems: 'center',
+            borderRadius: '20px 20px 20px 6px',
+            padding:      '16px 20px',
+            display:      'flex',
+            alignItems:   'center',
           }}
         >
           <ThinkingDots />
@@ -167,18 +166,17 @@ function AssistantBubble({ message: msg, onSave }: { message: ChatMessage; onSav
     <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'flex-start' }}>
       <AIAvatar />
       <div
+        className="glass-card"
         style={{
-          flex: 1,
-          maxWidth: '88%',
-          background: '#FFFFFF',
-          borderRadius: '16px 16px 16px 4px',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
-          padding: '20px 24px',
+          flex:         1,
+          maxWidth:     '88%',
+          borderRadius: '20px 20px 20px 6px',
+          padding:      '20px 24px',
         }}
       >
         {/* Explanation */}
         {msg.explanation && (
-          <Paragraph style={{ marginBottom: 16, color: '#2D3142', lineHeight: 1.7 }}>
+          <Paragraph style={{ marginBottom: 16, color: 'var(--text-primary)', lineHeight: 1.7 }}>
             {msg.explanation}
           </Paragraph>
         )}
@@ -436,6 +434,10 @@ export default function ChatPage() {
 
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  // Auto-submit if navigated from dashboard floating input (?q=...)
+  const autoQueryRef = useRef(false)
+  const initQ = searchParams.get('q')
+
   useEffect(() => {
     datasetsApi.list()
       .then((res) => {
@@ -443,11 +445,21 @@ export default function ChatPage() {
         if (!selectedDatasetId && res.data.length > 0) {
           setSelectedDatasetId(res.data[0].id)
         }
+        // Auto-send pre-filled question from ?q param
+        if (initQ && !autoQueryRef.current) {
+          autoQueryRef.current = true
+          const dsId = searchParams.get('dataset_id') ?? res.data[0]?.id
+          if (dsId) {
+            setSelectedDatasetId(dsId)
+            // Use setTimeout to allow state to settle before calling sendMessage
+            setTimeout(() => sendMessage(initQ), 100)
+          }
+        }
       })
       .catch(() => {
         message.error('数据集加载失败，请刷新页面重试')
       })
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -515,15 +527,17 @@ export default function ChatPage() {
   const selectedDataset = datasets.find((d) => d.id === selectedDatasetId)
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#F8F9FC' }}>
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'transparent' }}>
 
       {/* ── Header ── */}
       <div
         style={{
-          background: '#FFFFFF',
-          borderBottom: '1px solid #E8ECF3',
-          padding: '0 24px',
-          height: 60,
+          background:         'var(--bg-glass)',
+          backdropFilter:     'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          borderBottom:       '1px solid var(--bg-glass-border)',
+          padding:            '0 24px',
+          height:             60,
           display: 'flex',
           alignItems: 'center',
           gap: 16,
@@ -669,10 +683,12 @@ export default function ChatPage() {
       {/* ── Input ── */}
       <div
         style={{
-          background: '#FFFFFF',
-          borderTop: '1px solid #E8ECF3',
-          padding: '16px 40px',
-          flexShrink: 0,
+          background:         'var(--bg-glass)',
+          backdropFilter:     'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          borderTop:          '1px solid var(--bg-glass-border)',
+          padding:            '16px 40px',
+          flexShrink:         0,
         }}
       >
         <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', gap: 12, alignItems: 'flex-end' }}>

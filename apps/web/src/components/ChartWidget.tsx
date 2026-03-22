@@ -2,6 +2,7 @@ import { Table } from 'antd'
 import ReactECharts from 'echarts-for-react'
 import type { ChartType } from '../types'
 import '../styles/chartTheme'
+import { useThemeStore } from '../stores/themeStore'
 
 interface ChartWidgetProps {
   chartType: ChartType
@@ -241,6 +242,8 @@ function DataTableView({ columns, rows }: { columns: string[]; rows: unknown[][]
 
 // ── Main export ───────────────────────────────────────────────────────────────
 export default function ChartWidget({ chartType, columns, rows, height = 360 }: ChartWidgetProps) {
+  const { theme } = useThemeStore()
+  const isDark = theme === 'dark'
   if (!columns.length || !rows.length) {
     return <p style={{ color: '#9CA3B4', padding: 16 }}>暂无数据</p>
   }
@@ -276,8 +279,9 @@ export default function ChartWidget({ chartType, columns, rows, height = 360 }: 
 
   return (
     <ReactECharts
+      key={isDark ? 'dark' : 'light'}
       option={option}
-      theme="metadatahub"
+      theme={isDark ? 'metadatahub-dark' : 'metadatahub'}
       style={{ height: effectiveHeight }}
       opts={{ renderer: 'svg' }}
       notMerge
