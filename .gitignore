@@ -15,8 +15,11 @@ htmlcov/
 
 # Node
 node_modules/
-dist/
 .pnpm-store/
+# Keep Python dist ignored, but commit frontend build artifacts
+dist/
+!apps/web/dist/
+!apps/web/dist/**
 
 # Environment
 .env
