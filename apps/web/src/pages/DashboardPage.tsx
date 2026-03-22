@@ -1,13 +1,18 @@
 import {
   BarChartOutlined,
+  DeleteOutlined,
   FilterOutlined,
+  PlusOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
 import {
   Button,
   Empty,
+  Input,
+  Modal,
   Select,
   Skeleton,
+  Tag,
   Tooltip,
   Typography,
   message,
@@ -93,25 +98,41 @@ function KpiCard({ widget, result }: { widget: DashboardWidget; result?: WidgetR
           formatted
         )}
       </div>
-      {result.row_count !== undefined && (
-        <Text style={{ fontSize: 11, color: '#C4CBD6', marginTop: 6, display: 'block' }}>
-          {result.execution_time_ms}ms
-        </Text>
-      )}
     </div>
   )
 }
 
 // ── Chart Card ────────────────────────────────────────────────────────────────
 
-function ChartCard({ widget, result }: { widget: DashboardWidget; result?: WidgetResult }) {
+function ChartCard({
+  widget,
+  result,
+  onRemove,
+  canEdit,
+}: {
+  widget: DashboardWidget
+  result?: WidgetResult
+  onRemove?: () => void
+  canEdit?: boolean
+}) {
   return (
     <div style={{ ...cardStyle, minHeight: 300 }}>
-      <Text
-        style={{ fontSize: 13, fontWeight: 500, color: '#2D3142', display: 'block', marginBottom: 16 }}
-      >
-        {widget.title}
-      </Text>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+        <Text style={{ fontSize: 13, fontWeight: 500, color: '#2D3142', flex: 1 }}>
+          {widget.title}
+        </Text>
+        {canEdit && onRemove && (
+          <Tooltip title="移除图表">
+            <Button
+              type="text"
+              size="small"
+              icon={<DeleteOutlined />}
+              onClick={onRemove}
+              style={{ color: '#C4CBD6' }}
+            />
+          </Tooltip>
+        )}
+      </div>
       {!result ? (
         <Skeleton active paragraph={{ rows: 6 }} title={false} />
       ) : result.error ? (
@@ -151,17 +172,18 @@ function FilterBar({
   filters: DashboardFilter[]
   datasetId: string
   values: Record<string, string>
-  onChange: (id: string, val: string) => void
+  onChange: (field: string, val: string) => void
   onApply: () => void
 }) {
-  const [optionsMap, setOptionsMap] = useState<Record<string, string[]>>({})
+  const [optionsMap, setOptionsMap] = useState<Record<string, string[] | null>>({})
 
   useEffect(() => {
     for (const f of filters) {
+      setOptionsMap((prev) => ({ ...prev, [f.field]: null })) // null = loading
       datasetsApi
         .fieldValues(datasetId, f.field)
-        .then((r) => setOptionsMap((prev) => ({ ...prev, [f.id]: r.data })))
-        .catch(() => {})
+        .then((r) => setOptionsMap((prev) => ({ ...prev, [f.field]: r.data })))
+        .catch(() => setOptionsMap((prev) => ({ ...prev, [f.field]: [] })))
     }
   }, [filters, datasetId])
 
@@ -182,22 +204,95 @@ function FilterBar({
     >
       <FilterOutlined style={{ color: '#9CA3B4', fontSize: 14 }} />
       <Text style={{ fontSize: 12, color: '#9CA3B4', marginRight: 4 }}>筛选</Text>
-      {filters.map((f) => (
-        <Select
-          key={f.id}
-          allowClear
-          style={{ width: 180 }}
-          placeholder={f.label}
-          value={values[f.id] || undefined}
-          onChange={(v) => onChange(f.id, v ?? '')}
-          options={(optionsMap[f.id] ?? []).map((o) => ({ value: o, label: o }))}
-          size="small"
-        />
-      ))}
+      {filters.map((f) => {
+        const opts = optionsMap[f.field]
+        const isLoading = opts === null
+        return (
+          <Select
+            key={f.field}
+            allowClear
+            style={{ width: 180 }}
+            placeholder={f.label}
+            value={values[f.field] || undefined}
+            onChange={(v) => onChange(f.field, v ?? '')}
+            loading={isLoading}
+            options={(opts ?? []).map((o) => ({ value: o, label: o }))}
+            size="small"
+          />
+        )
+      })}
       <Button size="small" type="primary" onClick={onApply} style={{ marginLeft: 4 }}>
         应用
       </Button>
     </div>
+  )
+}
+
+// ── Create Dashboard Modal ────────────────────────────────────────────────────
+
+function CreateDashboardModal({
+  open,
+  datasets,
+  onClose,
+  onCreated,
+}: {
+  open: boolean
+  datasets: Dataset[]
+  onClose: () => void
+  onCreated: (id: string) => void
+}) {
+  const [name, setName] = useState('')
+  const [datasetId, setDatasetId] = useState<string>()
+  const [creating, setCreating] = useState(false)
+
+  const handleCreate = async () => {
+    if (!name.trim() || !datasetId) return
+    setCreating(true)
+    try {
+      const res = await dashboardApi.create({ name: name.trim(), dataset_id: datasetId })
+      message.success('看板已创建')
+      onCreated(res.data.id)
+      setName('')
+      setDatasetId(undefined)
+    } catch {
+      message.error('创建失败')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      title="新建看板"
+      onCancel={onClose}
+      onOk={handleCreate}
+      okText="创建"
+      cancelText="取消"
+      confirmLoading={creating}
+      okButtonProps={{ disabled: !name.trim() || !datasetId }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '16px 0' }}>
+        <div>
+          <Text style={{ fontSize: 12, color: '#5F6B7A', display: 'block', marginBottom: 6 }}>看板名称</Text>
+          <Input
+            placeholder="例如：销售分析看板"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div>
+          <Text style={{ fontSize: 12, color: '#5F6B7A', display: 'block', marginBottom: 6 }}>数据集</Text>
+          <Select
+            style={{ width: '100%' }}
+            placeholder="选择数据集"
+            value={datasetId}
+            onChange={setDatasetId}
+            options={datasets.map((d) => ({ value: d.id, label: d.name }))}
+          />
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -215,15 +310,14 @@ export default function DashboardPage() {
   const [generating, setGenerating] = useState(false)
   const [pendingFilters, setPendingFilters] = useState<Record<string, string>>({})
   const [appliedFilters, setAppliedFilters] = useState<Record<string, string>>({})
+  const [showCreate, setShowCreate] = useState(false)
   const initRef = useRef(false)
 
   useEffect(() => {
     if (initRef.current) return
     initRef.current = true
 
-    if (isAdmin) {
-      datasetsApi.list().then((r) => setDatasets(r.data)).catch(() => {})
-    }
+    datasetsApi.list().then((r) => setDatasets(r.data)).catch(() => {})
     dashboardApi
       .list()
       .then((r) => {
@@ -231,7 +325,7 @@ export default function DashboardPage() {
         if (r.data.length > 0) loadDashboard(r.data[0].id)
       })
       .catch(() => {})
-  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadDashboard = async (id: string) => {
     setLoading(true)
@@ -262,29 +356,33 @@ export default function DashboardPage() {
     }
   }
 
-  const handleFilterChange = (id: string, val: string) => {
-    setPendingFilters((prev) => ({ ...prev, [id]: val }))
-  }
-
-  const handleFilterApply = () => {
-    if (!selectedDashboard) return
-    setAppliedFilters(pendingFilters)
-    runWidgetQueries(selectedDashboard, pendingFilters)
-  }
-
   const handleAutoGenerate = async (datasetId: string) => {
     setGenerating(true)
     try {
       await dashboardApi.autoGenerate(datasetId)
       const listRes = await dashboardApi.list()
       setDashboards(listRes.data)
-      const newDash = listRes.data.find((d) => d.dataset_id === datasetId)
+      const newDash = listRes.data.find((d) => d.dataset_id === datasetId && d.dashboard_type === 'auto')
       if (newDash) await loadDashboard(newDash.id)
       message.success('看板已生成')
     } catch {
       message.error('生成失败，请重试')
     } finally {
       setGenerating(false)
+    }
+  }
+
+  const handleRemoveWidget = async (widgetId: string) => {
+    if (!selectedDashboard) return
+    const canEdit = isAdmin || selectedDashboard.dashboard_type === 'personal'
+    if (!canEdit) return
+    try {
+      await dashboardApi.removeWidget(selectedDashboard.id, widgetId)
+      const res = await dashboardApi.get(selectedDashboard.id)
+      setSelectedDashboard(res.data)
+      await runWidgetQueries(res.data, appliedFilters)
+    } catch {
+      message.error('移除失败')
     }
   }
 
@@ -299,6 +397,15 @@ export default function DashboardPage() {
   }
 
   const dashboardFilters: DashboardFilter[] = selectedDashboard?.config.filters ?? []
+  const canEdit =
+    !!selectedDashboard &&
+    (isAdmin || selectedDashboard.dashboard_type === 'personal')
+
+  const TYPE_LABEL: Record<string, { label: string; color: string }> = {
+    fixed: { label: '固定', color: '#6C5CE7' },
+    auto: { label: '自动', color: '#00C48C' },
+    personal: { label: '个人', color: '#3B82F6' },
+  }
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#F8F9FC' }}>
@@ -320,13 +427,35 @@ export default function DashboardPage() {
         <div style={{ width: 1, height: 20, background: '#E8ECF3' }} />
 
         <Select
-          style={{ width: 260 }}
+          style={{ width: 280 }}
           placeholder="选择看板"
           value={selectedDashboard?.id}
           onChange={loadDashboard}
-          options={dashboards.map((d) => ({ value: d.id, label: d.name }))}
           notFoundContent={<span style={{ fontSize: 12, color: '#9CA3B4' }}>暂无看板</span>}
-        />
+        >
+          {dashboards.map((d) => {
+            const tl = TYPE_LABEL[d.dashboard_type] ?? { label: d.dashboard_type, color: '#9CA3B4' }
+            return (
+              <Select.Option key={d.id} value={d.id}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Tag
+                    style={{
+                      fontSize: 10,
+                      padding: '0 6px',
+                      borderRadius: 8,
+                      background: `${tl.color}18`,
+                      color: tl.color,
+                      border: 'none',
+                    }}
+                  >
+                    {tl.label}
+                  </Tag>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.name}</span>
+                </div>
+              </Select.Option>
+            )
+          })}
+        </Select>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <Button
@@ -335,6 +464,12 @@ export default function DashboardPage() {
             loading={loading}
           >
             刷新
+          </Button>
+          <Button
+            icon={<PlusOutlined />}
+            onClick={() => setShowCreate(true)}
+          >
+            新建
           </Button>
           {isAdmin && (
             <Select
@@ -355,8 +490,12 @@ export default function DashboardPage() {
           filters={dashboardFilters}
           datasetId={selectedDashboard.dataset_id}
           values={pendingFilters}
-          onChange={handleFilterChange}
-          onApply={handleFilterApply}
+          onChange={(field, val) => setPendingFilters((prev) => ({ ...prev, [field]: val }))}
+          onApply={() => {
+            if (!selectedDashboard) return
+            setAppliedFilters(pendingFilters)
+            runWidgetQueries(selectedDashboard, pendingFilters)
+          }}
         />
       )}
 
@@ -367,8 +506,8 @@ export default function DashboardPage() {
             <Empty
               description={
                 isAdmin
-                  ? '暂无看板，请在右上角选择数据集自动生成'
-                  : '暂无看板，请联系管理员创建'
+                  ? '暂无看板，点击"新建"创建，或在右上角选择数据集自动生成'
+                  : '暂无看板，点击"新建"创建个人看板'
               }
             />
           </div>
@@ -410,7 +549,7 @@ export default function DashboardPage() {
                     style={{
                       display: 'grid',
                       gridTemplateColumns: isKpiRow
-                        ? `repeat(${rowWidgets.length}, 1fr)`
+                        ? 'repeat(auto-fit, minmax(180px, 1fr))'
                         : rowWidgets.map((w) => `${w.position.width}fr`).join(' '),
                       gap: 16,
                       marginBottom: 16,
@@ -420,7 +559,13 @@ export default function DashboardPage() {
                       widget.type === 'kpi' ? (
                         <KpiCard key={widget.id} widget={widget} result={widgetResults[widget.id]} />
                       ) : (
-                        <ChartCard key={widget.id} widget={widget} result={widgetResults[widget.id]} />
+                        <ChartCard
+                          key={widget.id}
+                          widget={widget}
+                          result={widgetResults[widget.id]}
+                          canEdit={canEdit}
+                          onRemove={() => handleRemoveWidget(widget.id)}
+                        />
                       ),
                     )}
                   </div>
@@ -429,6 +574,19 @@ export default function DashboardPage() {
           </>
         )}
       </div>
+
+      {/* ── Create Modal ── */}
+      <CreateDashboardModal
+        open={showCreate}
+        datasets={datasets}
+        onClose={() => setShowCreate(false)}
+        onCreated={async (id) => {
+          setShowCreate(false)
+          const listRes = await dashboardApi.list()
+          setDashboards(listRes.data)
+          await loadDashboard(id)
+        }}
+      />
     </div>
   )
 }

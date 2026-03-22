@@ -79,6 +79,7 @@ import type {
   CreateAccessRequest,
   CreateRlsRuleRequest,
   CreateUserRequest,
+  DashboardConfig,
   DashboardDetail,
   DashboardListItem,
   DashboardQueryResponse,
@@ -86,6 +87,8 @@ import type {
   DatasetAccessItem,
   DatasetDetail,
   RlsRuleItem,
+  SaveToDashboardRequest,
+  SaveToDashboardResponse,
   UpdateUserRequest,
   UserListItem,
   UserListResponse,
@@ -116,6 +119,8 @@ export const datasetsApi = {
 export const queryApi = {
   ask: (question: string, dataset_id: string) =>
     api.post<AskResponse>('/query/ask', { question, dataset_id }),
+  saveToDashboard: (data: SaveToDashboardRequest) =>
+    api.post<SaveToDashboardResponse>('/query/save-to-dashboard', data),
 }
 
 export const dashboardApi = {
@@ -125,6 +130,15 @@ export const dashboardApi = {
     api.post<DashboardQueryResponse>(`/dashboards/${id}/query`, { filters }),
   autoGenerate: (dataset_id: string) =>
     api.post<DashboardDetail>('/dashboards/auto-generate', { dataset_id }),
+  create: (data: { name: string; dataset_id: string; config?: Partial<DashboardConfig> }) =>
+    api.post<DashboardDetail>('/dashboards', data),
+  update: (id: string, data: { name?: string; config?: Partial<DashboardConfig>; is_pinned?: boolean }) =>
+    api.put<DashboardDetail>(`/dashboards/${id}`, data),
+  deleteDashboard: (id: string) => api.delete(`/dashboards/${id}`),
+  addWidget: (id: string, widget: { type: string; chart_type?: string; title: string; query: string }) =>
+    api.post(`/dashboards/${id}/widgets`, widget),
+  removeWidget: (id: string, widgetId: string) =>
+    api.delete(`/dashboards/${id}/widgets/${widgetId}`),
 }
 
 export const adminApi = {

@@ -16,7 +16,7 @@ def generate_dashboard_config(
     Uses pre-computed distinct_count to classify fields — no DB queries needed.
     """
     numeric_fields: list[str] = []
-    category_fields: list[str] = []   # string, low cardinality (≤ 20)
+    category_fields: list[str] = []   # string, 2 ≤ distinct ≤ 20 (meaningful pie/bar)
     date_fields: list[str] = []
     text_fields: list[str] = []        # string, high cardinality
 
@@ -27,7 +27,8 @@ def generate_dashboard_config(
         elif t in ("date", "datetime", "timestamp"):
             date_fields.append(col.name)
         elif t in ("string", "text", "varchar"):
-            if col.distinct_count and col.distinct_count <= 20:
+            dc = col.distinct_count or 0
+            if 2 <= dc <= 20:
                 category_fields.append(col.name)
             else:
                 text_fields.append(col.name)
@@ -40,36 +41,49 @@ def generate_dashboard_config(
                 if col.name not in date_fields:
                     date_fields.append(col.name)
 
+    # Build a lookup for distinct_count by column name
+    distinct_map: dict[str, int] = {col.name: (col.distinct_count or 0) for col in schema.columns}
+
     widgets: list[dict[str, Any]] = []
 
-    # Row 0: KPI cards (first 4 numeric fields)
+    # ── Row 0: KPI cards (first 4 numeric fields, SUM) ───────────────────────
     for i, nf in enumerate(numeric_fields[:4]):
         widgets.append({
             "id": f"kpi_{i}",
             "type": "kpi",
             "title": nf,
             "position": {"row": 0, "col": i, "width": 1, "height": 1},
-            "query": f'SELECT SUM(CAST("{nf}" AS DOUBLE)) AS value, COUNT(*) AS count FROM {{table}}',
+            "query": f'SELECT SUM(CAST("{nf}" AS DOUBLE)) AS value FROM {{table}}',
             "format": "number",
         })
 
-    # Row 1: time trend line chart
+    # ── Row 1: time trend line chart ─────────────────────────────────────────
     if date_fields and numeric_fields:
         df = date_fields[0]
         nf = numeric_fields[0]
+        dc = distinct_map.get(df, 0)
+
+        # If too many date points, aggregate to month (first 6 chars of string repr)
+        if dc > 30:
+            date_expr = f'SUBSTR(CAST("{df}" AS VARCHAR), 1, 6)'
+            date_label = f"{df}(ymdhms月)"
+        else:
+            date_expr = f'CAST("{df}" AS VARCHAR)'
+            date_label = df
+
         widgets.append({
             "id": "trend_1",
             "type": "chart",
             "chart_type": "line",
-            "title": f"{nf}趋势（按{df}）",
+            "title": f"{nf}趋势（按{date_label}）",
             "position": {"row": 1, "col": 0, "width": 3, "height": 1},
             "query": (
-                f'SELECT "{df}", SUM(CAST("{nf}" AS DOUBLE)) AS total '
-                f'FROM {{table}} GROUP BY "{df}" ORDER BY "{df}"'
+                f'SELECT {date_expr} AS period, SUM(CAST("{nf}" AS DOUBLE)) AS total '
+                f'FROM {{table}} GROUP BY {date_expr} ORDER BY {date_expr} LIMIT 60'
             ),
         })
 
-    # Row 1: category pie chart
+    # ── Row 1: category pie chart (only if ≥ 2 distinct values) ─────────────
     if category_fields and numeric_fields:
         cf = category_fields[0]
         nf = numeric_fields[0]
@@ -85,14 +99,14 @@ def generate_dashboard_config(
             ),
         })
 
-    # Row 2: TOP 10 ranking bar chart (high-cardinality text field)
+    # ── Row 2: TOP 10 ranking — horizontal bar ────────────────────────────────
     if text_fields and numeric_fields:
         tf = text_fields[0]
         nf = numeric_fields[0]
         widgets.append({
             "id": "ranking_1",
             "type": "chart",
-            "chart_type": "bar",
+            "chart_type": "bar_horizontal",
             "title": f"{tf} TOP 10",
             "position": {"row": 2, "col": 0, "width": 5, "height": 1},
             "query": (
@@ -101,7 +115,7 @@ def generate_dashboard_config(
             ),
         })
 
-    # Row 3: second numeric field by category
+    # ── Row 3: second numeric by category ────────────────────────────────────
     if len(numeric_fields) >= 2 and category_fields:
         cf = category_fields[0]
         nf2 = numeric_fields[1]
@@ -117,7 +131,7 @@ def generate_dashboard_config(
             ),
         })
 
-    # Filters
+    # ── Filters ───────────────────────────────────────────────────────────────
     filters = []
     if date_fields:
         filters.append({

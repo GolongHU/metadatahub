@@ -1,6 +1,7 @@
 import {
   CodeOutlined,
   DatabaseOutlined,
+  PushpinOutlined,
   SendOutlined,
   TableOutlined,
   WarningOutlined,
@@ -11,6 +12,7 @@ import {
   Collapse,
   Empty,
   Input,
+  Modal,
   Select,
   Skeleton,
   Space,
@@ -21,9 +23,9 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import ChartWidget from '../components/ChartWidget'
-import { datasetsApi, queryApi } from '../services/api'
+import { dashboardApi, datasetsApi, queryApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
-import type { ChatMessage, ChartType, Dataset, User } from '../types'
+import type { ChatMessage, ChartType, DashboardListItem, Dataset, User } from '../types'
 
 function computeScopeDesc(user: User | null): { icon: string; text: string } {
   if (!user) return { icon: '🔒', text: '' }
@@ -115,7 +117,7 @@ function UserBubble({ message: msg }: { message: ChatMessage }) {
 }
 
 // ── Assistant bubble ──────────────────────────────────────────────────────────
-function AssistantBubble({ message: msg }: { message: ChatMessage }) {
+function AssistantBubble({ message: msg, onSave }: { message: ChatMessage; onSave?: () => void }) {
   if (msg.loading) {
     return (
       <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
@@ -215,6 +217,20 @@ function AssistantBubble({ message: msg }: { message: ChatMessage }) {
           </div>
         )}
 
+        {/* Save to dashboard */}
+        {msg.sql && onSave && (
+          <div style={{ marginBottom: 8 }}>
+            <Button
+              size="small"
+              icon={<PushpinOutlined />}
+              onClick={onSave}
+              style={{ fontSize: 12, color: '#6C5CE7', borderColor: '#D9D5FE', background: '#F0EEFF' }}
+            >
+              保存到看板
+            </Button>
+          </div>
+        )}
+
         {/* Collapse: table + SQL */}
         <Collapse
           ghost
@@ -281,6 +297,102 @@ function AssistantBubble({ message: msg }: { message: ChatMessage }) {
   )
 }
 
+// ── Save to Dashboard Modal ────────────────────────────────────────────────────
+function SaveToDashboardModal({
+  open,
+  onClose,
+  msg,
+  datasetId,
+}: {
+  open: boolean
+  onClose: () => void
+  msg: ChatMessage
+  datasetId: string
+}) {
+  const [dashboards, setDashboards] = useState<DashboardListItem[]>([])
+  const [selectedId, setSelectedId] = useState<string>('__new__')
+  const [newName, setNewName] = useState('我的分析')
+  const [title, setTitle] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setTitle(msg.explanation?.slice(0, 30) ?? '分析结果')
+      dashboardApi.list().then((r) => setDashboards(r.data)).catch(() => {})
+    }
+  }, [open, msg.explanation])
+
+  const handleSave = async () => {
+    if (!msg.sql || !title.trim()) return
+    setSaving(true)
+    try {
+      const res = await queryApi.saveToDashboard({
+        dashboard_id: selectedId !== '__new__' ? selectedId : undefined,
+        new_dashboard_name: selectedId === '__new__' ? newName : undefined,
+        dataset_id: datasetId,
+        title: title.trim(),
+        sql: msg.sql,
+        chart_type: msg.chart_type ?? 'bar',
+        explanation: msg.explanation,
+      })
+      message.success(`已保存到「${res.data.dashboard_name}」`)
+      onClose()
+    } catch {
+      message.error('保存失败，请重试')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const dashboardOptions = [
+    { value: '__new__', label: '+ 新建个人看板' },
+    ...dashboards.map((d) => ({ value: d.id, label: `${d.name}（${d.widget_count} 个图表）` })),
+  ]
+
+  return (
+    <Modal
+      open={open}
+      title="保存到看板"
+      onCancel={onClose}
+      onOk={handleSave}
+      okText="保存"
+      cancelText="取消"
+      confirmLoading={saving}
+      okButtonProps={{ disabled: !title.trim() || (selectedId === '__new__' && !newName.trim()) }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '16px 0' }}>
+        <div>
+          <Text style={{ fontSize: 12, color: '#5F6B7A', display: 'block', marginBottom: 6 }}>图表标题</Text>
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="给这个图表起个名字"
+          />
+        </div>
+        <div>
+          <Text style={{ fontSize: 12, color: '#5F6B7A', display: 'block', marginBottom: 6 }}>目标看板</Text>
+          <Select
+            style={{ width: '100%' }}
+            value={selectedId}
+            onChange={setSelectedId}
+            options={dashboardOptions}
+          />
+        </div>
+        {selectedId === '__new__' && (
+          <div>
+            <Text style={{ fontSize: 12, color: '#5F6B7A', display: 'block', marginBottom: 6 }}>新看板名称</Text>
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="例如：我的销售分析"
+            />
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function ChatPage() {
   const [searchParams] = useSearchParams()
@@ -294,6 +406,7 @@ export default function ChatPage() {
   const [inputValue, setInputValue] = useState('')
   const [sending, setSending] = useState(false)
   const [inputFocused, setInputFocused] = useState(false)
+  const [saveTarget, setSaveTarget] = useState<ChatMessage | null>(null)
 
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -336,7 +449,7 @@ export default function ChatPage() {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === loadingMsg.id
-              ? { ...m, loading: false, content: explanation, sql, explanation, chart_type: chart_type as ChartType, data }
+              ? { ...m, loading: false, content: explanation, sql, explanation, chart_type: chart_type as ChartType, data, dataset_id: selectedDatasetId }
               : m
           )
         )
@@ -507,7 +620,11 @@ export default function ChatPage() {
           msg.role === 'user' ? (
             <UserBubble key={msg.id} message={msg} />
           ) : (
-            <AssistantBubble key={msg.id} message={msg} />
+            <AssistantBubble
+              key={msg.id}
+              message={msg}
+              onSave={msg.sql ? () => setSaveTarget(msg) : undefined}
+            />
           )
         )}
         <div ref={bottomRef} style={{ height: 1 }} />
@@ -590,6 +707,15 @@ export default function ChatPage() {
           AI 生成内容仅供参考 · Enter 发送 · Shift+Enter 换行
         </Text>
       </div>
+
+      {saveTarget && (
+        <SaveToDashboardModal
+          open={!!saveTarget}
+          onClose={() => setSaveTarget(null)}
+          msg={saveTarget}
+          datasetId={saveTarget.dataset_id ?? selectedDatasetId ?? ''}
+        />
+      )}
     </div>
   )
 }

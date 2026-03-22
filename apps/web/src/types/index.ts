@@ -145,8 +145,11 @@ export interface DashboardListItem {
   id: string
   name: string
   dataset_id: string
-  is_default: boolean
-  created_at: string
+  dataset_name: string
+  dashboard_type: 'fixed' | 'auto' | 'personal'
+  is_pinned: boolean
+  widget_count: number
+  updated_at: string
 }
 
 export interface DashboardWidget {
@@ -180,8 +183,28 @@ export interface DashboardDetail {
   name: string
   dataset_id: string
   config: DashboardConfig
+  dashboard_type: 'fixed' | 'auto' | 'personal'
+  owner_id: string | null
+  is_pinned: boolean
   is_default: boolean
   created_at: string
+  updated_at: string
+}
+
+export interface SaveToDashboardRequest {
+  dashboard_id?: string
+  new_dashboard_name?: string
+  dataset_id: string
+  title: string
+  sql: string
+  chart_type: string
+  explanation?: string
+}
+
+export interface SaveToDashboardResponse {
+  dashboard_id: string
+  widget_id: string
+  dashboard_name: string
 }
 
 export interface WidgetResult {
@@ -205,6 +228,7 @@ export interface ChatMessage {
   explanation?: string
   chart_type?: ChartType
   data?: QueryData
+  dataset_id?: string
   loading?: boolean
   error?: string
 }

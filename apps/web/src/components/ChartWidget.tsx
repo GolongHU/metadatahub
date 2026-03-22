@@ -256,11 +256,15 @@ export default function ChartWidget({ chartType, columns, rows, height = 360 }: 
         ? buildBarHorizontal(columns, rows)
         : buildBarLine(chartType, columns, rows)
 
+  // bar_horizontal: dynamic height based on number of rows
+  const effectiveHeight =
+    chartType === 'bar_horizontal' ? Math.max(200, rows.length * 36 + 60) : height
+
   return (
     <ReactECharts
       option={option}
       theme="metadatahub"
-      style={{ height }}
+      style={{ height: effectiveHeight }}
       opts={{ renderer: 'svg' }}
       notMerge
     />

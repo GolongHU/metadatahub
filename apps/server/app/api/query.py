@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +11,8 @@ from app.middleware.auth import get_current_user
 from app.models.dataset import Dataset
 from app.schemas.auth import AuthenticatedUser
 from app.schemas.dataset import DatasetSchema
+from app.models.dashboard import DashboardConfig
+from app.schemas.dashboard import SaveToDashboardRequest, SaveToDashboardResponse
 from app.schemas.query import AskRequest, AskResponse, QueryData
 from app.services.ai_engine import generate_sql
 from app.services.permission_resolver import PermissionResolver
@@ -151,4 +155,74 @@ async def ask(
         dataset_id=str(body.dataset_id),
         scope_desc=current_user.scope_desc,
         debug_sql=final_sql,         # actual executed SQL with RLS injection
+    )
+
+
+@router.post("/save-to-dashboard", response_model=SaveToDashboardResponse)
+async def save_to_dashboard(
+    body: SaveToDashboardRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> SaveToDashboardResponse:
+    user_id = uuid.UUID(current_user.user_id)
+
+    if body.dashboard_id:
+        result = await db.execute(
+            select(DashboardConfig).where(DashboardConfig.id == body.dashboard_id)
+        )
+        dashboard = result.scalars().first()
+        if dashboard is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dashboard not found")
+        if dashboard.owner_id != user_id and current_user.role != "admin":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot modify this dashboard")
+    else:
+        name = body.new_dashboard_name or "我的分析"
+        table_name = f"dataset_{body.dataset_id.hex}"
+        dashboard = DashboardConfig(
+            name=name,
+            dataset_id=body.dataset_id,
+            config={
+                "title": name,
+                "dataset_id": str(body.dataset_id),
+                "table_name": table_name,
+                "filters": [],
+                "widgets": [],
+            },
+            dashboard_type="personal",
+            owner_id=user_id,
+            created_by=user_id,
+        )
+        db.add(dashboard)
+        await db.flush()
+
+    config = dict(dashboard.config)
+    widgets = list(config.get("widgets", []))
+    table_name = config.get("table_name", f"dataset_{body.dataset_id.hex}")
+
+    if widgets:
+        max_row = max(w.get("position", {}).get("row", 0) for w in widgets)
+        new_row = max_row + 1
+    else:
+        new_row = 0
+
+    widget_id = f"widget_{uuid.uuid4().hex[:8]}"
+    # Replace concrete table name with placeholder for reusability
+    sql_with_placeholder = body.sql.replace(table_name, "{table}")
+
+    widgets.append({
+        "id": widget_id,
+        "type": "chart",
+        "chart_type": body.chart_type,
+        "title": body.title,
+        "query": sql_with_placeholder,
+        "position": {"row": new_row, "col": 0, "width": 5, "height": 1},
+    })
+    config["widgets"] = widgets
+    dashboard.config = config
+
+    await db.commit()
+    return SaveToDashboardResponse(
+        dashboard_id=dashboard.id,
+        widget_id=widget_id,
+        dashboard_name=dashboard.name,
     )

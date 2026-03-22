@@ -11,8 +11,11 @@ class DashboardListItem(BaseModel):
     id: uuid.UUID
     name: str
     dataset_id: uuid.UUID
-    is_default: bool
-    created_at: datetime
+    dataset_name: str = ""
+    dashboard_type: str = "auto"
+    is_pinned: bool = False
+    widget_count: int = 0
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
 
@@ -22,14 +25,39 @@ class DashboardDetail(BaseModel):
     name: str
     dataset_id: uuid.UUID
     config: Dict[str, Any]
-    is_default: bool
+    dashboard_type: str = "auto"
+    owner_id: Optional[uuid.UUID] = None
+    is_pinned: bool = False
+    is_default: bool = False
     created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
 class AutoGenerateRequest(BaseModel):
     dataset_id: uuid.UUID
+
+
+class CreateDashboardRequest(BaseModel):
+    name: str
+    dataset_id: uuid.UUID
+    config: Optional[Dict[str, Any]] = None
+
+
+class UpdateDashboardRequest(BaseModel):
+    name: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    is_pinned: Optional[bool] = None
+
+
+class AddWidgetRequest(BaseModel):
+    type: str  # 'kpi' | 'chart'
+    chart_type: Optional[str] = None
+    title: str
+    query: str
+    position: Optional[Dict[str, int]] = None
+    format: Optional[str] = None
 
 
 class DashboardQueryRequest(BaseModel):
@@ -46,3 +74,19 @@ class WidgetResult(BaseModel):
 
 class DashboardQueryResponse(BaseModel):
     widgets: Dict[str, WidgetResult]
+
+
+class SaveToDashboardRequest(BaseModel):
+    dashboard_id: Optional[uuid.UUID] = None
+    new_dashboard_name: Optional[str] = None
+    dataset_id: uuid.UUID
+    title: str
+    sql: str
+    chart_type: str
+    explanation: Optional[str] = None
+
+
+class SaveToDashboardResponse(BaseModel):
+    dashboard_id: uuid.UUID
+    widget_id: str
+    dashboard_name: str
