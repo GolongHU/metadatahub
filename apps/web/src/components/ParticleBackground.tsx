@@ -34,8 +34,9 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
   }))
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
+    const canvasEl = canvasRef.current
+    if (!canvasEl) return
+    const canvas: HTMLCanvasElement = canvasEl   // non-null alias for closures
     const ctx = canvas.getContext('2d')!
     const state = stateRef.current
 
