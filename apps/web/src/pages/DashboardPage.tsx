@@ -622,8 +622,15 @@ export default function DashboardPage() {
   const [renameValue, setRenameValue] = useState('')
   const [renameSaving, setRenameSaving] = useState(false)
   const [quickQuery, setQuickQuery] = useState('')
-  const { viewState: transitionState, startTransition, setLoading: setTransitionLoading, setExploding, setRevealing, setChatResult, setError: setTransitionError } = useViewStore()
+  const { viewState: transitionState, startTransition, setLoading: setTransitionLoading, setExploding, setRevealing, setChatResult, setError: setTransitionError, finishReturn } = useViewStore()
   const initRef = useRef(false)
+
+  // After returning animation, restore normal dashboard state
+  useEffect(() => {
+    if (transitionState !== 'returning') return
+    const t = setTimeout(() => finishReturn(), 600)
+    return () => clearTimeout(t)
+  }, [transitionState])
 
   const submitQuickQuery = (q: string) => {
     if (!q.trim() || !selectedDashboard) return
@@ -631,25 +638,16 @@ export default function DashboardPage() {
     const datasetId = selectedDashboard.dataset_id
     startTransition(q, datasetId)
 
-    const startTime = Date.now()
-    let resolved = false
+    // t=600ms: card fly-out done → show Möbius loader
+    setTimeout(() => setTransitionLoading(), 600)
 
-    // After card fly-out (600 ms) → show loader, unless API already responded
-    const loadingTimer = setTimeout(() => {
-      if (!resolved) setTransitionLoading()
-    }, 600)
-
-    // Fire API request
-    queryApi
-      .ask(q, datasetId)
-      .then((res) => {
-        resolved = true
-        clearTimeout(loadingTimer)
-        const { sql, chart_type, data: qd } = res.data
-        // Always wait ≥ 650 ms so the card fly-out finishes before exploding
-        const elapsed = Date.now() - startTime
-        const wait = Math.max(0, 650 - elapsed)
-        setTimeout(() => {
+    // t=700ms: fire API after cards are fully gone
+    setTimeout(() => {
+      queryApi
+        .ask(q, datasetId)
+        .then((res) => {
+          const { sql, chart_type, data: qd } = res.data
+          // API done → Möbius explodes + particles burst
           setExploding({
             query:      q,
             chartType:  chart_type as import('../types').ChartType,
@@ -658,17 +656,17 @@ export default function DashboardPage() {
             sql,
             dataset_id: datasetId,
           })
+          // +400ms: chart blur-to-clear reveal
           setTimeout(() => {
             setRevealing()
-            setTimeout(() => setChatResult(), 550)
-          }, 380)
-        }, wait)
-      })
-      .catch((err) => {
-        resolved = true
-        clearTimeout(loadingTimer)
-        setTransitionError(err?.response?.data?.detail ?? '查询失败')
-      })
+            // +800ms: fully interactive
+            setTimeout(() => setChatResult(), 800)
+          }, 400)
+        })
+        .catch((err) => {
+          setTransitionError(err?.response?.data?.detail ?? '查询失败')
+        })
+    }, 700)
   }
 
   useEffect(() => {
@@ -1080,7 +1078,9 @@ export default function DashboardPage() {
                         gap: 16,
                         marginBottom: 16,
                         ...(transitionState === 'collapsing' ? {
-                          animation: `card-fly-out 0.55s cubic-bezier(0.4,0,1,1) ${rowIdx * 60}ms both`,
+                          animation: `card-fly-out 0.5s cubic-bezier(0.55,0,1,0.8) ${rowIdx * 80}ms both`,
+                        } : transitionState === 'returning' ? {
+                          animation: `card-fly-in 0.5s cubic-bezier(0.2,0,0,1) ${rowIdx * 60}ms both`,
                         } : {}),
                       }}
                     >

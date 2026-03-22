@@ -8,6 +8,7 @@ export type ViewState =
   | 'exploding'
   | 'revealing'
   | 'chat_result'
+  | 'returning'
 
 export interface ChatResult {
   query: string
@@ -31,6 +32,7 @@ interface ViewStore {
   setRevealing(): void
   setChatResult(): void
   reset(): void
+  finishReturn(): void
   setError(err: string): void
 }
 
@@ -49,5 +51,6 @@ export const useViewStore = create<ViewStore>((set) => ({
   setRevealing:  () => set({ viewState: 'revealing' }),
   setChatResult: () => set({ viewState: 'chat_result' }),
   setError:      (err) => set({ viewState: 'dashboard', error: err }),
-  reset:         () => set({ viewState: 'dashboard', pendingQuery: '', pendingDatasetId: '', result: null, error: null }),
+  reset:         () => set({ viewState: 'returning', pendingQuery: '', pendingDatasetId: '', result: null, error: null }),
+  finishReturn:  () => set({ viewState: 'dashboard' }),
 }))

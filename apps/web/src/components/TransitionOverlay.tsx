@@ -7,7 +7,7 @@ export default function TransitionOverlay() {
   const navigate = useNavigate()
   const { viewState, result, pendingQuery, reset } = useViewStore()
 
-  if (viewState === 'dashboard') return null
+  if (viewState === 'dashboard' || viewState === 'returning') return null
 
   const isLoading    = viewState === 'loading'
   const isCollapsing = viewState === 'collapsing'
@@ -61,7 +61,7 @@ export default function TransitionOverlay() {
           style={{
             width:      'min(760px, calc(100vw - 100px))',
             padding:    '28px 32px',
-            animation:  'card-reveal 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+            animation:  'card-reveal 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards',
             marginLeft: 64,
           }}
         >

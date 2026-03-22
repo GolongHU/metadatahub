@@ -49,7 +49,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (viewState === 'collapsing') particleRef.current?.setMode('converge')
     if (viewState === 'exploding')  particleRef.current?.setMode('explode')
-    if (viewState === 'dashboard')  particleRef.current?.setMode('drift')
+    if (viewState === 'dashboard' || viewState === 'returning') particleRef.current?.setMode('drift')
   }, [viewState])
 
   const MENU_GROUPS = [
