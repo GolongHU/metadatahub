@@ -164,7 +164,7 @@ async def save_to_dashboard(
     db: AsyncSession = Depends(get_db),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> SaveToDashboardResponse:
-    user_id = uuid.UUID(current_user.user_id)
+    user_id = current_user.user_id if isinstance(current_user.user_id, uuid.UUID) else uuid.UUID(str(current_user.user_id))
 
     if body.dashboard_id:
         result = await db.execute(

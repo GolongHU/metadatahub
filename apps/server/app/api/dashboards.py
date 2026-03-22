@@ -80,7 +80,7 @@ def _check_write_permission(dashboard: DashboardConfig, current_user: Authentica
     is_admin = current_user.role == "admin"
     if is_admin:
         return
-    user_id = uuid.UUID(current_user.user_id)
+    user_id = current_user.user_id if isinstance(current_user.user_id, uuid.UUID) else uuid.UUID(str(current_user.user_id))
     if dashboard.owner_id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot modify this dashboard")
 
@@ -148,7 +148,7 @@ async def list_dashboards(
     db: AsyncSession = Depends(get_db),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> list[DashboardListItem]:
-    user_id = uuid.UUID(current_user.user_id)
+    user_id = current_user.user_id if isinstance(current_user.user_id, uuid.UUID) else uuid.UUID(str(current_user.user_id))
 
     result = await db.execute(
         select(DashboardConfig)
@@ -229,7 +229,7 @@ async def auto_generate_dashboard(
     for old in existing.scalars().all():
         old.is_default = False
 
-    user_id = uuid.UUID(current_user.user_id)
+    user_id = current_user.user_id if isinstance(current_user.user_id, uuid.UUID) else uuid.UUID(str(current_user.user_id))
     dashboard = DashboardConfig(
         name=config["title"],
         dataset_id=body.dataset_id,
@@ -253,7 +253,7 @@ async def create_dashboard(
     db: AsyncSession = Depends(get_db),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> DashboardDetail:
-    user_id = uuid.UUID(current_user.user_id)
+    user_id = current_user.user_id if isinstance(current_user.user_id, uuid.UUID) else uuid.UUID(str(current_user.user_id))
     table_name = f"dataset_{body.dataset_id.hex}"
     config = body.config or {
         "title": body.name,
