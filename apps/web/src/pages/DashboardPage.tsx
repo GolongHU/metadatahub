@@ -656,12 +656,12 @@ export default function DashboardPage() {
             sql,
             dataset_id: datasetId,
           })
-          // +400ms: chart blur-to-clear reveal
+          // +150ms: chart blur-to-clear reveal (faster after explode)
           setTimeout(() => {
             setRevealing()
-            // +800ms: fully interactive
-            setTimeout(() => setChatResult(), 800)
-          }, 400)
+            // +700ms: fully interactive
+            setTimeout(() => setChatResult(), 700)
+          }, 150)
         })
         .catch((err) => {
           setTransitionError(err?.response?.data?.detail ?? '查询失败')
@@ -1081,6 +1081,12 @@ export default function DashboardPage() {
                           animation: `card-fly-out 0.5s cubic-bezier(0.55,0,1,0.8) ${rowIdx * 80}ms both`,
                         } : transitionState === 'returning' ? {
                           animation: `card-fly-in 0.5s cubic-bezier(0.2,0,0,1) ${rowIdx * 60}ms both`,
+                        } : transitionState !== 'dashboard' ? {
+                          // stay hidden after fly-out (avoid snap-back on state change)
+                          opacity: 0,
+                          transform: 'translateX(-220px) scale(0.82)',
+                          filter: 'blur(6px)',
+                          transition: 'none',
                         } : {}),
                       }}
                     >

@@ -43,7 +43,7 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
             const dx = p.x - cx || 0.01
             const dy = p.y - cy || 0.01
             const len = Math.sqrt(dx * dx + dy * dy) || 1
-            const speed = 6 + Math.random() * 8
+            const speed = 14 + Math.random() * 18
             p.vx = (dx / len) * speed
             p.vy = (dy / len) * speed
           }
@@ -131,8 +131,8 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
           // Slow down after burst
           p.vx *= 0.93
           p.vy *= 0.93
-          // After 1.2 s revert to drift
-          if (elapsed > 1200) {
+          // After 0.8 s revert to drift
+          if (elapsed > 800) {
             p.vx = (Math.random() - 0.5) * 0.6
             p.vy = (Math.random() - 0.5) * 0.6
             state.mode = 'drift'

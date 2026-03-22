@@ -40,6 +40,7 @@
 
   /* Canvas bg */
   --particle-bg: #FFFFFF;
+  --overlay-bg: 248,249,252;
 }
 
 /* ── Dark theme ────────────────────────────────────────────────────────────── */
@@ -71,6 +72,7 @@
 
   /* Canvas bg */
   --particle-bg: #0A0C14;
+  --overlay-bg: 10,12,20;
 }
 
 /* ── Global reset ──────────────────────────────────────────────────────────── */
@@ -162,9 +164,14 @@ body {
   100% { transform: translateY(0)    scale(1);    opacity: 1; filter: blur(0); }
 }
 
-@keyframes orbit {
-  from { transform: rotate(0deg)   translateX(42px) rotate(0deg); }
-  to   { transform: rotate(360deg) translateX(42px) rotate(-360deg); }
+@keyframes mobius-path {
+  0%   { offset-distance: 0%; }
+  100% { offset-distance: 100%; }
+}
+
+@keyframes trail-fade {
+  0%   { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -157; }
 }
 
 /* ── Ant Design dark mode overrides ───────────────────────────────────────── */

@@ -25,6 +25,11 @@ export default function TransitionOverlay() {
         alignItems:     'center',
         justifyContent: 'center',
         pointerEvents:  isLoading ? 'none' : 'auto',
+        background:     isCollapsing
+          ? 'transparent'
+          : 'rgba(var(--overlay-bg, 248,249,252), 0.55)',
+        backdropFilter: isCollapsing ? 'none' : 'blur(2px)',
+        transition:     'background 0.3s ease, backdrop-filter 0.3s ease',
       }}
     >
       {/* Loading / exploding phase */}
