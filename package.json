@@ -1,0 +1,13 @@
+{
+  "name": "metadatahub",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/web"
+  ],
+  "engines": {
+    "pnpm": ">=8.0.0",
+    "node": ">=18.0.0"
+  },
+  "packageManager": "pnpm@8.15.0"
+}

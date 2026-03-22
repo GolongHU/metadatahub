@@ -1,0 +1,85 @@
+version: "3.9"
+
+# MetadataHub — Production Stack
+# Frontend + API + PostgreSQL + Redis
+# Accessible at http://<server>:3000
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mh_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: metadatahub
+      POSTGRES_PASSWORD: metadatahub
+      POSTGRES_DB: metadatahub
+    volumes:
+      - mh_pgdata:/var/lib/postgresql/data
+    networks: [mhnet]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metadatahub -d metadatahub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: mh_redis
+    restart: unless-stopped
+    volumes:
+      - mh_redisdata:/data
+    networks: [mhnet]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./apps/server
+      dockerfile: Dockerfile
+    container_name: mh_api
+    restart: unless-stopped
+    env_file: .env.prod
+    environment:
+      DATABASE_URL: postgresql+asyncpg://metadatahub:metadatahub@postgres:5432/metadatahub
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: "http://47.113.187.130:3000"
+      APP_ENV: production
+    volumes:
+      - mh_uploads:/app/uploads
+      - mh_duckdb:/app/duckdb_data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [mhnet]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  nginx:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: mh_nginx
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    networks: [mhnet]
+
+volumes:
+  mh_pgdata:
+  mh_redisdata:
+  mh_uploads:
+  mh_duckdb:
+
+networks:
+  mhnet:
+    name: metadatahub_network
