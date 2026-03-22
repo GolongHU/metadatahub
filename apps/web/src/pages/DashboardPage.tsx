@@ -631,30 +631,42 @@ export default function DashboardPage() {
     const datasetId = selectedDashboard.dataset_id
     startTransition(q, datasetId)
 
-    // After card fly-out animation (600 ms) → loading phase
-    setTimeout(() => setTransitionLoading(), 600)
+    const startTime = Date.now()
+    let resolved = false
+
+    // After card fly-out (600 ms) → show loader, unless API already responded
+    const loadingTimer = setTimeout(() => {
+      if (!resolved) setTransitionLoading()
+    }, 600)
 
     // Fire API request
     queryApi
       .ask(q, datasetId)
       .then((res) => {
+        resolved = true
+        clearTimeout(loadingTimer)
         const { sql, chart_type, data: qd } = res.data
-        setExploding({
-          query:      q,
-          chartType:  chart_type,
-          columns:    qd.columns,
-          rows:       qd.rows,
-          sql:        sql,
-          dataset_id: datasetId,
-        })
-        // exploding → revealing after 400 ms
+        // Always wait ≥ 650 ms so the card fly-out finishes before exploding
+        const elapsed = Date.now() - startTime
+        const wait = Math.max(0, 650 - elapsed)
         setTimeout(() => {
-          setRevealing()
-          // revealing → chat_result after 600 ms
-          setTimeout(() => setChatResult(), 600)
-        }, 400)
+          setExploding({
+            query:      q,
+            chartType:  chart_type as import('../types').ChartType,
+            columns:    qd.columns,
+            rows:       qd.rows,
+            sql,
+            dataset_id: datasetId,
+          })
+          setTimeout(() => {
+            setRevealing()
+            setTimeout(() => setChatResult(), 550)
+          }, 380)
+        }, wait)
       })
       .catch((err) => {
+        resolved = true
+        clearTimeout(loadingTimer)
         setTransitionError(err?.response?.data?.detail ?? '查询失败')
       })
   }

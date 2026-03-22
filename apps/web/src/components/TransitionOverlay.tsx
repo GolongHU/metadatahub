@@ -9,7 +9,8 @@ export default function TransitionOverlay() {
 
   if (viewState === 'dashboard') return null
 
-  const isLoading    = viewState === 'collapsing' || viewState === 'loading'
+  const isLoading    = viewState === 'loading'
+  const isCollapsing = viewState === 'collapsing'
   const isExploding  = viewState === 'exploding'
   const isResult     = viewState === 'revealing' || viewState === 'chat_result'
 
@@ -27,13 +28,15 @@ export default function TransitionOverlay() {
       }}
     >
       {/* Loading / exploding phase */}
-      {(isLoading || isExploding) && (
+      {(isCollapsing || isLoading || isExploding) && (
         <div
           style={{
             display:        'flex',
             flexDirection:  'column',
             alignItems:     'center',
             gap:            20,
+            opacity:        isCollapsing ? 0 : 1,
+            transition:     'opacity 0.3s ease 0.4s',
             animation:      isExploding ? 'mobius-explode 0.4s ease-in forwards' : 'none',
           }}
         >
