@@ -21,15 +21,35 @@ const DARK_COLORS  = ['#8B7FFF', '#C4BFFE', '#00E0A3', '#FFC95A', '#60A5FA', '#F
 const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stateRef  = useRef({
-    theme:     'light' as 'light' | 'dark',
-    mode:      'drift' as 'drift' | 'converge' | 'explode',
-    particles: [] as Particle[],
-    animFrame: 0,
-    isLowEnd:  false,
+    theme:         'light' as 'light' | 'dark',
+    mode:          'drift' as 'drift' | 'converge' | 'explode',
+    particles:     [] as Particle[],
+    animFrame:     0,
+    isLowEnd:      false,
+    modeStartTime: 0,
   })
 
   useImperativeHandle(ref, () => ({
-    setMode(mode) { stateRef.current.mode = mode },
+    setMode(mode) {
+      stateRef.current.mode = mode
+      stateRef.current.modeStartTime = performance.now()
+      // On explode: scatter all particles outward from center
+      if (mode === 'explode') {
+        const canvas = canvasRef.current
+        if (canvas) {
+          const cx = canvas.width / 2
+          const cy = canvas.height / 2
+          for (const p of stateRef.current.particles) {
+            const dx = p.x - cx || 0.01
+            const dy = p.y - cy || 0.01
+            const len = Math.sqrt(dx * dx + dy * dy) || 1
+            const speed = 6 + Math.random() * 8
+            p.vx = (dx / len) * speed
+            p.vy = (dy / len) * speed
+          }
+        }
+      }
+    },
     setTheme(theme) { stateRef.current.theme = theme },
   }))
 
@@ -88,15 +108,46 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
       ctx.fillRect(0, 0, w, h)
       ctx.globalAlpha = 1
 
-      // Update positions (drift mode) + bounce
+      // Update positions
+      const { mode, modeStartTime } = state
+      const cx = w / 2
+      const cy = h / 2
+      const elapsed = time - modeStartTime
+
       for (const p of particles) {
+        if (mode === 'converge') {
+          // Pull toward center, accelerating over 2 s
+          const strength = Math.min(0.05 + elapsed * 0.00004, 0.18)
+          p.vx += (cx - p.x) * strength * 0.04
+          p.vy += (cy - p.y) * strength * 0.04
+          // Add a slight clockwise swirl
+          const swirl = 0.015
+          p.vx += -p.vy * swirl
+          p.vy +=  p.vx * swirl
+          // Dampen speed
+          p.vx *= 0.94
+          p.vy *= 0.94
+        } else if (mode === 'explode') {
+          // Slow down after burst
+          p.vx *= 0.93
+          p.vy *= 0.93
+          // After 1.2 s revert to drift
+          if (elapsed > 1200) {
+            p.vx = (Math.random() - 0.5) * 0.6
+            p.vy = (Math.random() - 0.5) * 0.6
+            state.mode = 'drift'
+          }
+        }
+
         p.x += p.vx
         p.y += p.vy
 
-        if (p.x - p.radius < 0)  { p.x = p.radius;       p.vx *= -1 }
-        if (p.x + p.radius > w)  { p.x = w - p.radius;   p.vx *= -1 }
-        if (p.y - p.radius < 0)  { p.y = p.radius;       p.vy *= -1 }
-        if (p.y + p.radius > h)  { p.y = h - p.radius;   p.vy *= -1 }
+        if (mode === 'drift') {
+          if (p.x - p.radius < 0)  { p.x = p.radius;       p.vx *= -1 }
+          if (p.x + p.radius > w)  { p.x = w - p.radius;   p.vx *= -1 }
+          if (p.y - p.radius < 0)  { p.y = p.radius;       p.vy *= -1 }
+          if (p.y + p.radius > h)  { p.y = h - p.radius;   p.vy *= -1 }
+        }
       }
 
       // Draw connections (O(n²), fine for ≤120 particles)

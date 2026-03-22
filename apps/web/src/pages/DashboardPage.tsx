@@ -27,11 +27,12 @@ import {
   message,
 } from 'antd'
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import ChartWidget from '../components/ChartWidget'
 import { dashboardApi, datasetsApi, queryApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { useChatStore, type RecentQuery } from '../stores/chatStore'
+import { useViewStore } from '../stores/useViewStore'
 import type {
   ChartType,
   DashboardConfig,
@@ -603,7 +604,6 @@ function AddChartModal({
 
 export default function DashboardPage() {
   const [searchParams] = useSearchParams()
-  const navigate = useNavigate()
   const { user } = useAuthStore()
   const isAdmin = user?.role === 'admin'
 
@@ -622,7 +622,42 @@ export default function DashboardPage() {
   const [renameValue, setRenameValue] = useState('')
   const [renameSaving, setRenameSaving] = useState(false)
   const [quickQuery, setQuickQuery] = useState('')
+  const { viewState: transitionState, startTransition, setLoading: setTransitionLoading, setExploding, setRevealing, setChatResult, setError: setTransitionError } = useViewStore()
   const initRef = useRef(false)
+
+  const submitQuickQuery = (q: string) => {
+    if (!q.trim() || !selectedDashboard) return
+    setQuickQuery('')
+    const datasetId = selectedDashboard.dataset_id
+    startTransition(q, datasetId)
+
+    // After card fly-out animation (600 ms) → loading phase
+    setTimeout(() => setTransitionLoading(), 600)
+
+    // Fire API request
+    queryApi
+      .ask(q, datasetId)
+      .then((res) => {
+        const { sql, chart_type, data: qd } = res.data
+        setExploding({
+          query:      q,
+          chartType:  chart_type,
+          columns:    qd.columns,
+          rows:       qd.rows,
+          sql:        sql,
+          dataset_id: datasetId,
+        })
+        // exploding → revealing after 400 ms
+        setTimeout(() => {
+          setRevealing()
+          // revealing → chat_result after 600 ms
+          setTimeout(() => setChatResult(), 600)
+        }, 400)
+      })
+      .catch((err) => {
+        setTransitionError(err?.response?.data?.detail ?? '查询失败')
+      })
+  }
 
   useEffect(() => {
     if (initRef.current) return
@@ -1032,6 +1067,9 @@ export default function DashboardPage() {
                           : rowWidgets.map((w) => `${w.position.width}fr`).join(' '),
                         gap: 16,
                         marginBottom: 16,
+                        ...(transitionState === 'collapsing' ? {
+                          animation: `card-fly-out 0.55s cubic-bezier(0.4,0,1,1) ${rowIdx * 60}ms both`,
+                        } : {}),
                       }}
                     >
                       {rowWidgets.map((widget) =>
@@ -1108,10 +1146,7 @@ export default function DashboardPage() {
             value={quickQuery}
             onChange={(e) => setQuickQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && quickQuery.trim() && selectedDashboard) {
-                navigate(`/chat?q=${encodeURIComponent(quickQuery)}&dataset_id=${selectedDashboard.dataset_id}`)
-                setQuickQuery('')
-              }
+              if (e.key === 'Enter') submitQuickQuery(quickQuery)
             }}
             placeholder="向 AI 提问数据…按 Enter 进入对话"
             style={{
@@ -1129,12 +1164,7 @@ export default function DashboardPage() {
             size="small"
             icon={<SendOutlined />}
             disabled={!quickQuery.trim()}
-            onClick={() => {
-              if (quickQuery.trim() && selectedDashboard) {
-                navigate(`/chat?q=${encodeURIComponent(quickQuery)}&dataset_id=${selectedDashboard.dataset_id}`)
-                setQuickQuery('')
-              }
-            }}
+            onClick={() => submitQuickQuery(quickQuery)}
             style={{ background: '#6C5CE7', border: 'none', borderRadius: 10, flexShrink: 0 }}
           />
         </div>

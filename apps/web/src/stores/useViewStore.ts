@@ -1,0 +1,53 @@
+import { create } from 'zustand'
+import type { ChartType } from '../types'
+
+export type ViewState =
+  | 'dashboard'
+  | 'collapsing'
+  | 'loading'
+  | 'exploding'
+  | 'revealing'
+  | 'chat_result'
+
+export interface ChatResult {
+  query: string
+  chartType: ChartType
+  columns: string[]
+  rows: unknown[][]
+  sql: string
+  dataset_id: string
+}
+
+interface ViewStore {
+  viewState: ViewState
+  pendingQuery: string
+  pendingDatasetId: string
+  result: ChatResult | null
+  error: string | null
+
+  startTransition(query: string, datasetId: string): void
+  setLoading(): void
+  setExploding(result: ChatResult): void
+  setRevealing(): void
+  setChatResult(): void
+  reset(): void
+  setError(err: string): void
+}
+
+export const useViewStore = create<ViewStore>((set) => ({
+  viewState:        'dashboard',
+  pendingQuery:     '',
+  pendingDatasetId: '',
+  result:           null,
+  error:            null,
+
+  startTransition: (query, datasetId) =>
+    set({ viewState: 'collapsing', pendingQuery: query, pendingDatasetId: datasetId, result: null, error: null }),
+
+  setLoading:    () => set({ viewState: 'loading' }),
+  setExploding:  (result) => set({ viewState: 'exploding', result }),
+  setRevealing:  () => set({ viewState: 'revealing' }),
+  setChatResult: () => set({ viewState: 'chat_result' }),
+  setError:      (err) => set({ viewState: 'dashboard', error: err }),
+  reset:         () => set({ viewState: 'dashboard', pendingQuery: '', pendingDatasetId: '', result: null, error: null }),
+}))

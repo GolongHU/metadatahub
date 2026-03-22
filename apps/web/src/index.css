@@ -117,6 +117,44 @@ body {
   40% { opacity: 1; transform: scale(1); }
 }
 
+/* ── Transition animations ─────────────────────────────────────────────────── */
+@keyframes spin-cw {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes spin-ccw {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
+
+@keyframes center-pulse {
+  0%, 100% { transform: scale(1);   opacity: 1; }
+  50%       { transform: scale(1.5); opacity: 0.7; }
+}
+
+@keyframes fade-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 1; }
+}
+
+@keyframes card-fly-out {
+  0%   { transform: translateY(0) scale(1);    opacity: 1; }
+  60%  { transform: translateY(-30px) scale(0.95); opacity: 0.6; }
+  100% { transform: translateY(-80px) scale(0.88); opacity: 0; }
+}
+
+@keyframes mobius-explode {
+  0%   { transform: scale(1);    opacity: 1; }
+  50%  { transform: scale(1.35); opacity: 0.6; filter: blur(0); }
+  100% { transform: scale(2.2);  opacity: 0;  filter: blur(8px); }
+}
+
+@keyframes card-reveal {
+  0%   { transform: translateY(40px) scale(0.92); opacity: 0; }
+  100% { transform: translateY(0)    scale(1);    opacity: 1; }
+}
+
 /* ── Ant Design dark mode overrides ───────────────────────────────────────── */
 [data-theme="dark"] .ant-table-wrapper {
   --ant-color-bg-container: rgba(26, 29, 46, 0.8);

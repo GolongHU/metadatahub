@@ -14,6 +14,8 @@ import { authApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
 import ParticleBackground, { type ParticleSystemRef } from './ParticleBackground'
+import TransitionOverlay from './TransitionOverlay'
+import { useViewStore } from '../stores/useViewStore'
 
 const ROLE_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
   admin:   { label: '管理员',   bg: 'rgba(108,92,231,0.15)', color: '#A29BFE' },
@@ -29,6 +31,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const { theme, toggleTheme } = useThemeStore()
   const particleRef = useRef<ParticleSystemRef>(null)
   const [isExpanded, setIsExpanded] = useState(false)
+  const viewState   = useViewStore((s) => s.viewState)
 
   const isDark = theme === 'dark'
   const role   = user?.role ?? ''
@@ -41,6 +44,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     particleRef.current?.setTheme(theme)
   }, [theme])
+
+  // Sync viewState → particle mode
+  useEffect(() => {
+    if (viewState === 'collapsing') particleRef.current?.setMode('converge')
+    if (viewState === 'exploding')  particleRef.current?.setMode('explode')
+    if (viewState === 'dashboard')  particleRef.current?.setMode('drift')
+  }, [viewState])
 
   const MENU_GROUPS = [
     {
@@ -95,6 +105,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <>
       {/* ── Particle canvas (fixed, z-index 0) ── */}
       <ParticleBackground ref={particleRef} />
+
+      {/* ── Transition overlay (fixed, z-index 200) ── */}
+      <TransitionOverlay />
 
       {/* ── Overlay when sidebar is expanded ── */}
       {isExpanded && (
