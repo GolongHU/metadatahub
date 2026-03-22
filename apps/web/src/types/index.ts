@@ -219,6 +219,11 @@ export interface DashboardQueryResponse {
   widgets: Record<string, WidgetResult>
 }
 
+export interface PreviewRequest {
+  dataset_id: string
+  sql: string
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'

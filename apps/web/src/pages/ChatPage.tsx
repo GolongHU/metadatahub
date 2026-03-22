@@ -25,6 +25,7 @@ import { useSearchParams } from 'react-router-dom'
 import ChartWidget from '../components/ChartWidget'
 import { dashboardApi, datasetsApi, queryApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
+import { useChatStore } from '../stores/chatStore'
 import type { ChatMessage, ChartType, DashboardListItem, Dataset, User } from '../types'
 
 function computeScopeDesc(user: User | null): { icon: string; text: string } {
@@ -118,6 +119,8 @@ function UserBubble({ message: msg }: { message: ChatMessage }) {
 
 // ── Assistant bubble ──────────────────────────────────────────────────────────
 function AssistantBubble({ message: msg, onSave }: { message: ChatMessage; onSave?: () => void }) {
+  const [chartHover, setChartHover] = useState(false)
+
   if (msg.loading) {
     return (
       <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
@@ -183,7 +186,7 @@ function AssistantBubble({ message: msg, onSave }: { message: ChatMessage; onSav
         {/* Chart */}
         {msg.data && msg.chart_type && msg.chart_type !== 'table' && (
           <div style={{ marginBottom: 8 }}>
-            <div style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12, gap: 8 }}>
               <span
                 style={{
                   display: 'inline-flex',
@@ -202,32 +205,46 @@ function AssistantBubble({ message: msg, onSave }: { message: ChatMessage; onSav
               </span>
             </div>
             <div
-              style={{
-                background: '#FAFBFD',
-                borderRadius: 12,
-                padding: 16,
-              }}
+              style={{ position: 'relative' }}
+              onMouseEnter={() => setChartHover(true)}
+              onMouseLeave={() => setChartHover(false)}
             >
-              <ChartWidget
-                chartType={msg.chart_type}
-                columns={msg.data.columns}
-                rows={msg.data.rows}
-              />
+              {/* Save button overlay */}
+              {msg.sql && onSave && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    zIndex: 10,
+                    opacity: chartHover ? 1 : 0,
+                    transition: 'opacity 0.15s',
+                  }}
+                >
+                  <Button
+                    size="small"
+                    icon={<PushpinOutlined />}
+                    onClick={onSave}
+                    style={{
+                      fontSize: 12,
+                      color: '#6C5CE7',
+                      borderColor: '#D9D5FE',
+                      background: '#F0EEFF',
+                      boxShadow: '0 2px 6px rgba(108,92,231,0.15)',
+                    }}
+                  >
+                    保存到看板
+                  </Button>
+                </div>
+              )}
+              <div style={{ background: '#FAFBFD', borderRadius: 12, padding: 16 }}>
+                <ChartWidget
+                  chartType={msg.chart_type}
+                  columns={msg.data.columns}
+                  rows={msg.data.rows}
+                />
+              </div>
             </div>
-          </div>
-        )}
-
-        {/* Save to dashboard */}
-        {msg.sql && onSave && (
-          <div style={{ marginBottom: 8 }}>
-            <Button
-              size="small"
-              icon={<PushpinOutlined />}
-              onClick={onSave}
-              style={{ fontSize: 12, color: '#6C5CE7', borderColor: '#D9D5FE', background: '#F0EEFF' }}
-            >
-              保存到看板
-            </Button>
           </div>
         )}
 
@@ -335,7 +352,15 @@ function SaveToDashboardModal({
         chart_type: msg.chart_type ?? 'bar',
         explanation: msg.explanation,
       })
-      message.success(`已保存到「${res.data.dashboard_name}」`)
+      const dashId = res.data.dashboard_id
+      message.success(
+        <span>
+          已保存到「{res.data.dashboard_name}」{' '}
+          <a href={`/dashboards?dashboard=${dashId}`} style={{ color: '#6C5CE7', fontWeight: 500 }}>
+            去查看 →
+          </a>
+        </span>
+      )
       onClose()
     } catch {
       message.error('保存失败，请重试')
@@ -398,6 +423,7 @@ export default function ChatPage() {
   const [searchParams] = useSearchParams()
   const initDatasetId = searchParams.get('dataset_id') ?? undefined
   const { user } = useAuthStore()
+  const { addQuery } = useChatStore()
   const scopeDesc = computeScopeDesc(user)
 
   const [datasets, setDatasets] = useState<Dataset[]>([])
@@ -453,6 +479,16 @@ export default function ChatPage() {
               : m
           )
         )
+        // Save to cross-page history store
+        addQuery({
+          id: loadingMsg.id,
+          title: explanation.slice(0, 40) || question.slice(0, 40),
+          sql,
+          chart_type: chart_type as ChartType,
+          dataset_id: selectedDatasetId,
+          row_count: data.row_count,
+          created_at: new Date().toISOString(),
+        })
       } catch (err: unknown) {
         const detail =
           (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail

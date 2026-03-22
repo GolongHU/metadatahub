@@ -42,8 +42,8 @@ function buildBarLine(chartType: 'bar' | 'line', columns: string[], rows: unknow
           lineStyle: { width: 2.5, color: colors[colIdx % colors.length] },
           itemStyle: { color: colors[colIdx % colors.length] },
           areaStyle: { opacity: 0.06, color: colors[colIdx % colors.length] },
-          symbol: 'circle',
-          symbolSize: 6,
+          symbol: rows.length > 20 ? 'none' : 'circle',
+          symbolSize: rows.length > 20 ? 0 : 6,
         }),
   }))
 
@@ -90,11 +90,19 @@ function buildBarLine(chartType: 'bar' | 'line', columns: string[], rows: unknow
   }
 }
 
+// Interpolate between #6C5CE7 and #D9D5FE based on rank (0 = vivid, 1 = light)
+function rankColor(t: number): string {
+  const r = Math.round(108 + t * (217 - 108))
+  const g = Math.round(92 + t * (213 - 92))
+  const b = Math.round(231 + t * (254 - 231))
+  return `rgb(${r},${g},${b})`
+}
+
 // ── Bar Horizontal ─────────────────────────────────────────────────────────────
 function buildBarHorizontal(_columns: string[], rows: unknown[][]) {
-  const yData = rows.map((r) => String(r[0] ?? '')).reverse()
-  const values = rows.map((r) => toNum(r[1])).reverse()
-  const colors = ['#6C5CE7', '#7B6EE8', '#8A80E9', '#9991EA', '#A8A3EB']
+  const n = rows.length
+  const yData = rows.map((r) => String(r[0] ?? ''))
+  const values = rows.map((r) => toNum(r[1]))
 
   return {
     tooltip: {
@@ -123,13 +131,8 @@ function buildBarHorizontal(_columns: string[], rows: unknown[][]) {
       data: yData,
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: {
-        color: '#5F6B7A',
-        fontSize: 12,
-        width: 80,
-        overflow: 'truncate',
-      },
-      inverse: false,
+      axisLabel: { color: '#5F6B7A', fontSize: 12, width: 80, overflow: 'truncate' },
+      inverse: true,  // rank 1 (index 0) at top
     },
     series: [
       {
@@ -138,14 +141,8 @@ function buildBarHorizontal(_columns: string[], rows: unknown[][]) {
           value: v,
           itemStyle: {
             borderRadius: [0, 6, 6, 0],
-            color: {
-              type: 'linear',
-              x: 0, y: 0, x2: 1, y2: 0,
-              colorStops: [
-                { offset: 0, color: colors[i % colors.length] },
-                { offset: 1, color: '#C4B5FD' },
-              ],
-            },
+            // rank gradient: index 0 (rank 1) is most vivid
+            color: rankColor(n > 1 ? i / (n - 1) : 0),
           },
         })),
         barMaxWidth: 28,
@@ -163,6 +160,9 @@ function buildBarHorizontal(_columns: string[], rows: unknown[][]) {
 
 // ── Pie ───────────────────────────────────────────────────────────────────────
 function buildPie(_columns: string[], rows: unknown[][]) {
+  // Single sector: render as KPI card (return null signals the caller to fallback)
+  if (rows.length === 1) return null
+
   const colors = ['#6C5CE7', '#00C48C', '#FFB946', '#FF6B81', '#3B82F6', '#A29BFE']
   const data = rows.map((r, i) => ({
     name: String(r[0] ?? ''),
@@ -249,9 +249,23 @@ export default function ChartWidget({ chartType, columns, rows, height = 360 }: 
     return <DataTableView columns={columns} rows={rows} />
   }
 
+  // Pie with single sector → KPI fallback
+  if (chartType === 'pie' && rows.length === 1) {
+    const label = String(rows[0][0] ?? '')
+    const value = toNum(rows[0][1])
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height, gap: 6 }}>
+        <div style={{ fontSize: 13, color: '#9CA3B4' }}>{label}</div>
+        <div style={{ fontSize: 36, fontWeight: 700, color: '#6C5CE7', letterSpacing: '-1px' }}>
+          {yFormatter(value)}
+        </div>
+      </div>
+    )
+  }
+
   const option =
     chartType === 'pie'
-      ? buildPie(columns, rows)
+      ? buildPie(columns, rows)!
       : chartType === 'bar_horizontal'
         ? buildBarHorizontal(columns, rows)
         : buildBarLine(chartType, columns, rows)

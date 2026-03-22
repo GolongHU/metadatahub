@@ -52,3 +52,8 @@ class QueryResult(BaseModel):
     rows: List[List[Any]]
     row_count: int
     execution_time_ms: float
+
+
+class PreviewRequest(BaseModel):
+    dataset_id: uuid.UUID
+    sql: str

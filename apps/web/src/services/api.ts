@@ -86,6 +86,8 @@ import type {
   Dataset,
   DatasetAccessItem,
   DatasetDetail,
+  PreviewRequest,
+  QueryData,
   RlsRuleItem,
   SaveToDashboardRequest,
   SaveToDashboardResponse,
@@ -119,6 +121,8 @@ export const datasetsApi = {
 export const queryApi = {
   ask: (question: string, dataset_id: string) =>
     api.post<AskResponse>('/query/ask', { question, dataset_id }),
+  preview: (data: PreviewRequest) =>
+    api.post<QueryData>('/query/preview', data),
   saveToDashboard: (data: SaveToDashboardRequest) =>
     api.post<SaveToDashboardResponse>('/query/save-to-dashboard', data),
 }

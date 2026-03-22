@@ -13,7 +13,7 @@ from app.schemas.auth import AuthenticatedUser
 from app.schemas.dataset import DatasetSchema
 from app.models.dashboard import DashboardConfig
 from app.schemas.dashboard import SaveToDashboardRequest, SaveToDashboardResponse
-from app.schemas.query import AskRequest, AskResponse, QueryData
+from app.schemas.query import AskRequest, AskResponse, PreviewRequest, QueryData
 from app.services.ai_engine import generate_sql
 from app.services.permission_resolver import PermissionResolver
 from app.services.query_executor import check_sql_safety, execute_query
@@ -155,6 +155,63 @@ async def ask(
         dataset_id=str(body.dataset_id),
         scope_desc=current_user.scope_desc,
         debug_sql=final_sql,         # actual executed SQL with RLS injection
+    )
+
+
+@router.post("/preview", response_model=QueryData)
+async def preview_sql(
+    body: PreviewRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> QueryData:
+    """Execute a custom SQL for preview (safety check + RLS, no AI)."""
+    result = await db.execute(
+        select(Dataset).where(
+            Dataset.id == body.dataset_id,
+            Dataset.is_active == True,  # noqa: E712
+        )
+    )
+    dataset = result.scalar_one_or_none()
+    if dataset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+
+    table_name = f"dataset_{dataset.id.hex}"
+    # Allow {table} placeholder in user SQL
+    sql = body.sql.replace("{table}", table_name)
+
+    safety = check_sql_safety(sql, allowed_tables=[table_name])
+    if not safety.safe:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"SQL failed safety check: {safety.reason}",
+        )
+
+    resolver = PermissionResolver(db)
+    try:
+        resolved = await resolver.resolve(
+            user=current_user,
+            dataset_id=body.dataset_id,
+            base_sql=sql,
+            table_name=table_name,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+
+    try:
+        query_result = execute_query(resolved["sql"], dataset_table=table_name)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Query execution failed: {exc}",
+        )
+
+    return QueryData(
+        columns=query_result.columns,
+        rows=query_result.rows,
+        row_count=len(query_result.rows),
+        execution_time_ms=query_result.execution_time_ms,
     )
 
 
