@@ -122,7 +122,7 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
       const lineBase  = isDark ? 0.10 : 0.10   // same visibility in both modes
 
       // Trail
-      ctx.globalAlpha = 0.14
+      ctx.globalAlpha = isDark ? 0.14 : 0.09
       ctx.fillStyle   = bgColor
       ctx.fillRect(0, 0, w, h)
       ctx.globalAlpha = 1
@@ -199,7 +199,7 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
       // Particles
       for (const p of particles) {
         const col = colors[p.colorIdx] ?? colors[0]
-        ctx.globalAlpha = p.opacity * (isDark ? 0.9 : 1)
+        ctx.globalAlpha = Math.min(p.opacity * (isDark ? 0.9 : 1.7), 1)
         ctx.fillStyle   = col
         ctx.beginPath()
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2)

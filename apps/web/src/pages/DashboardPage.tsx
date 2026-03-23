@@ -331,7 +331,13 @@ function RankingCard({
           {result.error}
         </div>
       ) : (() => {
-        const rows = result.rows.slice(0, 10)
+        const rows = [...result.rows]
+          .sort((a, b) => {
+            const va = typeof a[1] === 'number' ? a[1] : parseFloat(String(a[1] ?? 0))
+            const vb = typeof b[1] === 'number' ? b[1] : parseFloat(String(b[1] ?? 0))
+            return vb - va
+          })
+          .slice(0, 10)
         const maxVal = Math.max(...rows.map((r) => {
           const v = r[1]
           return typeof v === 'number' ? v : parseFloat(String(v ?? 0))
@@ -615,7 +621,7 @@ function FilterDrawer({
       {open && (
         <div
           style={{
-            position: 'absolute',
+            position: 'fixed',
             inset: 0,
             zIndex: 14,
             background: 'transparent',
@@ -829,91 +835,111 @@ function AiBubble({
 
   if (expanded) {
     return (
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 0,
-          right: 0,
-          width: 420,
-          zIndex: 20,
-          transformOrigin: 'bottom right',
-          animation: 'db-expand 0.2s cubic-bezier(0.2,0,0,1) both',
-        }}
-      >
+      <>
+        {/* Click-outside backdrop */}
         <div
           style={{
-            margin: '0 16px 16px',
-            borderRadius: 18,
-            background: 'rgba(20,22,32,0.92)',
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            border: '1px solid rgba(162,155,254,0.15)',
-            padding: '14px 16px',
-            boxShadow: '0 8px 40px rgba(108,92,231,0.25)',
+            position: 'fixed',
+            inset: 0,
+            zIndex: 19,
+            background: 'transparent',
+          }}
+          onClick={() => setExpanded(false)}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            right: 0,
+            width: 420,
+            zIndex: 20,
+            transformOrigin: 'bottom right',
+            animation: 'db-expand 0.2s cubic-bezier(0.2,0,0,1) both',
           }}
         >
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            {/* Mini möbius */}
-            <svg width="28" height="20" viewBox="0 0 160 112" fill="none" style={{ flexShrink: 0 }}>
-              <path
-                d={mobiusPath}
-                fill="none"
-                stroke="rgba(162,155,254,0.25)"
-                strokeWidth="10"
-                strokeLinecap="round"
+          <div
+            style={{
+              margin: '0 16px 16px',
+              borderRadius: 18,
+              background: 'rgba(20,22,32,0.92)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              border: '1px solid rgba(162,155,254,0.15)',
+              padding: '10px 16px',
+              boxShadow: '0 8px 40px rgba(108,92,231,0.25)',
+            }}
+          >
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {/* Back button */}
+              <button
+                onClick={() => setExpanded(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#5F6B7A',
+                  padding: '4px 6px',
+                  borderRadius: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  flexShrink: 0,
+                  transition: 'color 0.15s',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#A29BFE' }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#5F6B7A' }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+              </button>
+              {/* Mini möbius */}
+              <svg width="24" height="17" viewBox="0 0 160 112" fill="none" style={{ flexShrink: 0 }}>
+                <path d={mobiusPath} fill="none" stroke="rgba(162,155,254,0.25)" strokeWidth="10" strokeLinecap="round" />
+                <path d={mobiusPath} fill="none" stroke="rgba(162,155,254,0.5)" strokeWidth="10" strokeLinecap="round" strokeDasharray="60 220" className={trailClass} />
+                <circle r="7" fill="white" className={ballClass} />
+              </svg>
+              <input
+                ref={quickInputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSubmit()
+                  if (e.key === 'Escape') setExpanded(false)
+                }}
+                placeholder="向 AI 提问数据… Enter 发送"
+                style={{
+                  flex: 1,
+                  border: 'none',
+                  background: 'transparent',
+                  outline: 'none',
+                  fontSize: 14,
+                  color: '#E8ECF3',
+                  fontFamily: 'inherit',
+                }}
               />
-              <path
-                d={mobiusPath}
-                fill="none"
-                stroke="rgba(162,155,254,0.5)"
-                strokeWidth="10"
-                strokeLinecap="round"
-                strokeDasharray="60 220"
-                className={trailClass}
-              />
-              <circle r="7" fill="white" className={ballClass} />
-            </svg>
-            <input
-              ref={quickInputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSubmit()
-                if (e.key === 'Escape') setExpanded(false)
-              }}
-              placeholder="向 AI 提问数据… Enter 发送"
-              style={{
-                flex: 1,
-                border: 'none',
-                background: 'transparent',
-                outline: 'none',
-                fontSize: 14,
-                color: '#E8ECF3',
-                fontFamily: 'inherit',
-              }}
-            />
-            <button
-              onClick={handleSubmit}
-              disabled={!input.trim() || disabled}
-              style={{
-                background: input.trim() && !disabled ? 'linear-gradient(135deg, #6C5CE7, #A29BFE)' : 'rgba(162,155,254,0.12)',
-                border: 'none',
-                borderRadius: 10,
-                width: 32,
-                height: 32,
-                cursor: input.trim() && !disabled ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                transition: 'background 0.2s',
-              }}
-            >
-              <SendOutlined style={{ color: input.trim() && !disabled ? 'white' : '#5F6B7A', fontSize: 13 }} />
-            </button>
+              <button
+                onClick={handleSubmit}
+                disabled={!input.trim() || disabled}
+                style={{
+                  background: input.trim() && !disabled ? 'linear-gradient(135deg, #6C5CE7, #A29BFE)' : 'rgba(162,155,254,0.12)',
+                  border: 'none',
+                  borderRadius: 10,
+                  width: 32,
+                  height: 32,
+                  cursor: input.trim() && !disabled ? 'pointer' : 'not-allowed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  transition: 'background 0.2s',
+                }}
+              >
+                <SendOutlined style={{ color: input.trim() && !disabled ? 'white' : '#5F6B7A', fontSize: 13 }} />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </>
     )
   }
 
@@ -928,6 +954,7 @@ function AiBubble({
         height: 52,
         cursor: disabled ? 'not-allowed' : 'pointer',
       }}
+      title="向 AI 提问数据"
       onClick={() => !disabled && setExpanded(true)}
     >
       {/* Ping ring */}
@@ -1472,6 +1499,15 @@ export default function DashboardPage() {
   const { viewState: transitionState, startTransition, setLoading: setTransitionLoading, setExploding, setRevealing, setChatResult, setError: setTransitionError, finishReturn } = useViewStore()
   const initRef = useRef(false)
 
+  // Esc key: close filter drawer
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowFilterDrawer(false)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   // After returning animation, restore normal dashboard state
   useEffect(() => {
     if (transitionState !== 'returning') return
@@ -1678,16 +1714,16 @@ export default function DashboardPage() {
     width: 32,
     height: 32,
     borderRadius: 10,
-    background: 'rgba(26,29,46,0.6)',
+    background: isDark ? 'rgba(26,29,46,0.6)' : 'rgba(255,255,255,0.75)',
     backdropFilter: 'blur(12px)',
     WebkitBackdropFilter: 'blur(12px)',
-    border: '1px solid rgba(162,155,254,0.08)',
+    border: isDark ? '1px solid rgba(162,155,254,0.08)' : '1px solid rgba(108,92,231,0.10)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
     transition: 'opacity 0.2s, background 0.2s',
-    color: '#9CA3B4',
+    color: isDark ? '#9CA3B4' : '#5F6B7A',
     fontSize: 14,
   }
 
@@ -1700,7 +1736,7 @@ export default function DashboardPage() {
         position: 'relative',
         height: '100vh',
         overflow: 'hidden',
-        background: 'transparent',
+        background: isDark ? 'transparent' : '#F4F3FF',
       }}
       onMouseEnter={() => setPageHovered(true)}
       onMouseLeave={() => setPageHovered(false)}
@@ -1777,7 +1813,7 @@ export default function DashboardPage() {
               gap: 6,
               alignItems: 'center',
               pointerEvents: 'auto',
-              opacity: pageHovered ? 1 : 0,
+              opacity: pageHovered ? 1 : 0.55,
               transition: 'opacity 0.3s',
             }}
           >
@@ -1786,8 +1822,8 @@ export default function DashboardPage() {
                 <div
                   style={{
                     ...actionBtnStyle,
-                    background: showFilterDrawer ? 'rgba(108,92,231,0.25)' : 'rgba(26,29,46,0.6)',
-                    color: showFilterDrawer ? '#A29BFE' : '#9CA3B4',
+                    background: showFilterDrawer ? 'rgba(108,92,231,0.25)' : actionBtnStyle.background,
+                    color: showFilterDrawer ? '#A29BFE' : actionBtnStyle.color,
                   }}
                   onClick={() => setShowFilterDrawer((v) => !v)}
                 >
@@ -1801,8 +1837,8 @@ export default function DashboardPage() {
                 <div
                   style={{
                     ...actionBtnStyle,
-                    background: editMode ? 'rgba(108,92,231,0.25)' : 'rgba(26,29,46,0.6)',
-                    color: editMode ? '#A29BFE' : '#9CA3B4',
+                    background: editMode ? 'rgba(108,92,231,0.25)' : actionBtnStyle.background,
+                    color: editMode ? '#A29BFE' : actionBtnStyle.color,
                   }}
                   onClick={() => setEditMode((v) => !v)}
                 >
