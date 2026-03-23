@@ -7,9 +7,11 @@ import ChatPage from './pages/ChatPage'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
 import PermissionPage from './pages/PermissionPage'
+import SettingsPage from './pages/SettingsPage'
 import UploadPage from './pages/UploadPage'
 import { authApi } from './services/api'
 import { useAuthStore } from './stores/authStore'
+import { useBrandingStore } from './stores/brandingStore'
 import { useThemeStore } from './stores/themeStore'
 import axios from 'axios'
 
@@ -24,6 +26,7 @@ export default function App() {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { setAuth } = useAuthStore()
+  const { load: loadBranding } = useBrandingStore()
   const [bootstrapped, setBootstrapped] = useState(false)
 
   // Sync theme to DOM
@@ -34,6 +37,9 @@ export default function App() {
   // Silent refresh on page load — restore session from httpOnly cookie
   useEffect(() => {
     const restore = async () => {
+      // Load branding first (no auth needed)
+      loadBranding()
+
       try {
         const res = await axios.post<{ access_token: string; expires_in: number }>(
           '/api/v1/auth/refresh', {}, { withCredentials: true }
@@ -123,6 +129,7 @@ export default function App() {
         <Route path="/chat"        element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
         <Route path="/dashboard"   element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/permissions" element={<ProtectedRoute adminOnly><PermissionPage /></ProtectedRoute>} />
+        <Route path="/settings"    element={<ProtectedRoute adminOnly><SettingsPage /></ProtectedRoute>} />
         <Route path="/"  element={<Navigate to="/dashboard" replace />} />
         <Route path="*"  element={<Navigate to="/dashboard" replace />} />
       </Routes>

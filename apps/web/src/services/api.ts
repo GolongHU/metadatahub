@@ -75,6 +75,9 @@ api.interceptors.response.use(
 
 // ── Typed endpoint helpers ────────────────────────────────────────────────────
 import type {
+  AIProviderCreate,
+  AIProviderOut,
+  AIProviderUpdate,
   AskResponse,
   CreateAccessRequest,
   CreateRlsRuleRequest,
@@ -87,10 +90,14 @@ import type {
   DatasetAccessItem,
   DatasetDetail,
   PreviewRequest,
+  ProviderTestResponse,
+  PublicBranding,
   QueryData,
   RlsRuleItem,
   SaveToDashboardRequest,
   SaveToDashboardResponse,
+  TaskRoutingItem,
+  TaskRoutingOut,
   UpdateUserRequest,
   UserListItem,
   UserListResponse,
@@ -101,6 +108,41 @@ export const authApi = {
     api.post<{ access_token: string; expires_in: number }>('/auth/login', { email, password }),
   me: () => api.get<{ user_id: string; name: string; email: string; role: string; region: string | null; partner_id: string | null }>('/auth/me'),
   logout: () => api.post('/auth/logout'),
+}
+
+export const configApi = {
+  getPublicBranding: () =>
+    axios.get<PublicBranding>('/api/v1/config/branding/public', { withCredentials: false }),
+  getBranding: () => api.get<Record<string, string>>('/admin/config/branding'),
+  updateBranding: (data: Record<string, string | null>) =>
+    api.put<Record<string, string>>('/admin/config/branding', data),
+  uploadLogo: (type: 'light' | 'dark', file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<{ url: string }>(`/admin/config/branding/logo?type=${type}`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  uploadFavicon: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<{ url: string }>('/admin/config/branding/favicon', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+}
+
+export const aiAdminApi = {
+  listProviders: () => api.get<AIProviderOut[]>('/admin/ai/providers'),
+  createProvider: (data: AIProviderCreate) => api.post<AIProviderOut>('/admin/ai/providers', data),
+  updateProvider: (id: string, data: AIProviderUpdate) =>
+    api.put<AIProviderOut>(`/admin/ai/providers/${id}`, data),
+  deleteProvider: (id: string) => api.delete(`/admin/ai/providers/${id}`),
+  testProvider: (id: string, prompt?: string) =>
+    api.post<ProviderTestResponse>(`/admin/ai/providers/${id}/test`, { prompt: prompt ?? '请回复 OK' }),
+  getTaskRouting: () => api.get<TaskRoutingOut[]>('/admin/ai/task-routing'),
+  updateTaskRouting: (data: TaskRoutingItem[]) =>
+    api.put<TaskRoutingOut[]>('/admin/ai/task-routing', data),
 }
 
 export const datasetsApi = {

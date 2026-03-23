@@ -139,6 +139,77 @@ export interface RlsRuleItem {
 
 export type ChartType = 'bar' | 'bar_horizontal' | 'line' | 'pie' | 'table'
 
+// ── Platform config types ─────────────────────────────────────────────────────
+
+export interface PublicBranding {
+  platform_name: string
+  logo_light_url: string | null
+  logo_dark_url: string | null
+  favicon_url: string | null
+  primary_color: string
+  login_tagline: string
+}
+
+export interface ModelInfo {
+  id: string
+  name: string
+  context_window: number
+}
+
+export interface AIProviderOut {
+  id: string
+  name: string
+  provider_type: string
+  base_url: string
+  api_key_masked: string
+  models: ModelInfo[]
+  is_active: boolean
+  sort_order: number
+}
+
+export interface AIProviderCreate {
+  name: string
+  provider_type: string
+  base_url: string
+  api_key: string
+  models: ModelInfo[]
+  sort_order?: number
+}
+
+export interface AIProviderUpdate {
+  name?: string
+  provider_type?: string
+  base_url?: string
+  api_key?: string
+  models?: ModelInfo[]
+  is_active?: boolean
+  sort_order?: number
+}
+
+export interface ProviderTestResponse {
+  success: boolean
+  latency_ms: number
+  response: string | null
+  error: string | null
+}
+
+export interface TaskRoutingItem {
+  task_type: string
+  primary_provider_id: string | null
+  primary_model: string
+  fallback_provider_id: string | null
+  fallback_model: string | null
+  temperature: number
+  max_tokens: number
+  is_active: boolean
+}
+
+export interface TaskRoutingOut extends TaskRoutingItem {
+  id: string
+  primary_provider_name: string | null
+  fallback_provider_name: string | null
+}
+
 // ── Dashboard types ───────────────────────────────────────────────────────────
 
 export interface DashboardListItem {

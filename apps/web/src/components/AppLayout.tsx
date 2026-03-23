@@ -3,6 +3,7 @@ import {
   LockOutlined,
   MessageOutlined,
   MoonOutlined,
+  SettingOutlined,
   ShopOutlined,
   SunOutlined,
   UploadOutlined,
@@ -13,6 +14,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { authApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
+import { useBrandingStore } from '../stores/brandingStore'
 import ParticleBackground, { type ParticleSystemRef } from './ParticleBackground'
 import TransitionOverlay from './TransitionOverlay'
 import { useViewStore } from '../stores/useViewStore'
@@ -29,6 +31,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation()
   const { user, logout } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
+  const { platformName, logoLightUrl, logoDarkUrl } = useBrandingStore()
   const particleRef = useRef<ParticleSystemRef>(null)
   const [isExpanded, setIsExpanded] = useState(false)
   const viewState   = useViewStore((s) => s.viewState)
@@ -88,8 +91,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     {
       label: 'SETTINGS',
       items: [
-        { key: '/permissions', icon: <LockOutlined />,  label: '权限管理', enabled: isAdmin, visible: isAdmin },
-        { key: '/marketplace', icon: <ShopOutlined />,  label: '看板市场', enabled: false,   visible: true },
+        { key: '/permissions', icon: <LockOutlined />,    label: '权限管理', enabled: isAdmin, visible: isAdmin },
+        { key: '/settings',    icon: <SettingOutlined />, label: '平台设置', enabled: isAdmin, visible: isAdmin },
+        { key: '/marketplace', icon: <ShopOutlined />,    label: '看板市场', enabled: false,   visible: true },
       ],
     },
   ]
@@ -185,30 +189,38 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             borderBottom: `1px solid ${dividerColor}`,
           }}
         >
-          <div
-            style={{
-              width:          28,
-              height:         28,
-              borderRadius:   8,
-              background:     'linear-gradient(135deg, #6C5CE7 0%, #A29BFE 100%)',
-              display:        'flex',
-              alignItems:     'center',
-              justifyContent: 'center',
-              color:          '#fff',
-              fontSize:       13,
-              fontWeight:     700,
-              flexShrink:     0,
-              boxShadow:      '0 2px 8px rgba(108,92,231,0.35)',
-            }}
-          >
-            M
-          </div>
+          {(isDark ? logoDarkUrl : logoLightUrl) ? (
+            <img
+              src={isDark ? logoDarkUrl! : logoLightUrl!}
+              alt="logo"
+              style={{ width: 28, height: 28, objectFit: 'contain', flexShrink: 0 }}
+            />
+          ) : (
+            <div
+              style={{
+                width:          28,
+                height:         28,
+                borderRadius:   8,
+                background:     'linear-gradient(135deg, var(--primary-500, #6C5CE7) 0%, var(--primary-300, #A29BFE) 100%)',
+                display:        'flex',
+                alignItems:     'center',
+                justifyContent: 'center',
+                color:          '#fff',
+                fontSize:       13,
+                fontWeight:     700,
+                flexShrink:     0,
+                boxShadow:      '0 2px 8px rgba(108,92,231,0.35)',
+              }}
+            >
+              {platformName[0]?.toUpperCase() ?? 'M'}
+            </div>
+          )}
           <span
             style={{
               ...labelStyle({ fontSize: 15, fontWeight: 600, color: textPrimary }),
             }}
           >
-            MetadataHub
+            {platformName}
           </span>
         </div>
 
