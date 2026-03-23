@@ -1754,8 +1754,8 @@ export default function DashboardPage() {
           zIndex: 10,
           pointerEvents: 'none',
           background: isDark
-            ? 'linear-gradient(180deg, rgba(8,10,18,0.85) 0%, transparent 100%)'
-            : 'linear-gradient(180deg, rgba(244,243,255,0.96) 0%, transparent 100%)',
+            ? 'linear-gradient(180deg, rgba(8,10,18,0.45) 0%, transparent 100%)'
+            : 'linear-gradient(180deg, rgba(244,243,255,0.80) 0%, transparent 100%)',
           height: 72,
         }}
       >
