@@ -61,9 +61,9 @@ async def set_config(
         text(
             """
             INSERT INTO platform_config (id, category, key, value, description, updated_by, updated_at)
-            VALUES (gen_random_uuid(), :category, :key, :value::jsonb, :description, :user_id, now())
+            VALUES (gen_random_uuid(), :category, :key, CAST(:value AS jsonb), :description, :user_id, now())
             ON CONFLICT (key) DO UPDATE
-              SET value = :value::jsonb, updated_by = :user_id, updated_at = now()
+              SET value = CAST(:value AS jsonb), updated_by = :user_id, updated_at = now()
             """
         ),
         {
