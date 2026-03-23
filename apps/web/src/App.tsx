@@ -1,6 +1,6 @@
 import { ConfigProvider, theme as antdTheme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import AppLayout from './components/AppLayout'
 import ChatPage from './pages/ChatPage'
@@ -8,8 +8,10 @@ import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
 import PermissionPage from './pages/PermissionPage'
 import UploadPage from './pages/UploadPage'
+import { authApi } from './services/api'
 import { useAuthStore } from './stores/authStore'
 import { useThemeStore } from './stores/themeStore'
+import axios from 'axios'
 
 function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
   const { isAuthenticated, user } = useAuthStore()
@@ -21,11 +23,37 @@ function ProtectedRoute({ children, adminOnly = false }: { children: React.React
 export default function App() {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
+  const { setAuth } = useAuthStore()
+  const [bootstrapped, setBootstrapped] = useState(false)
 
   // Sync theme to DOM
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
+
+  // Silent refresh on page load — restore session from httpOnly cookie
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const res = await axios.post<{ access_token: string; expires_in: number }>(
+          '/api/v1/auth/refresh', {}, { withCredentials: true }
+        )
+        const meRes = await authApi.me()
+        const u = meRes.data
+        setAuth(res.data.access_token, {
+          user_id: u.user_id, name: u.name, email: u.email,
+          role: u.role, region: u.region, partner_id: u.partner_id,
+        }, res.data.expires_in)
+      } catch {
+        // No valid session — let ProtectedRoute redirect to /login
+      } finally {
+        setBootstrapped(true)
+      }
+    }
+    restore()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!bootstrapped) return null  // Wait before rendering routes
 
   const lightTokens = {
     colorPrimary: '#6C5CE7',
