@@ -622,8 +622,16 @@ export default function DashboardPage() {
   const [renameValue, setRenameValue] = useState('')
   const [renameSaving, setRenameSaving] = useState(false)
   const [quickQuery, setQuickQuery] = useState('')
+  const quickInputRef = useRef<HTMLInputElement>(null)
   const { viewState: transitionState, startTransition, setLoading: setTransitionLoading, setExploding, setRevealing, setChatResult, setError: setTransitionError, finishReturn } = useViewStore()
   const initRef = useRef(false)
+
+  // Cmd+K → focus floating input
+  useEffect(() => {
+    const onFocus = () => quickInputRef.current?.focus()
+    window.addEventListener('focus-quick-input', onFocus)
+    return () => window.removeEventListener('focus-quick-input', onFocus)
+  }, [])
 
   // After returning animation, restore normal dashboard state
   useEffect(() => {
@@ -1138,54 +1146,58 @@ export default function DashboardPage() {
 
       {/* ── Floating input bar ── */}
       <div
+        className="floating-input-bar"
         style={{
-          position:     'fixed',
-          bottom:       20,
-          left:         88,
-          right:        20,
-          zIndex:       50,
           pointerEvents: selectedDashboard ? 'auto' : 'none',
-          opacity:      selectedDashboard ? 1 : 0,
-          transition:   'opacity 0.2s',
+          opacity:       selectedDashboard ? 1 : 0,
         }}
       >
-        <div
-          className="glass-card"
-          style={{
-            display:    'flex',
-            alignItems: 'center',
-            gap:        12,
-            padding:    '10px 16px',
-            borderRadius: 16,
+        {/* Dataset tag */}
+        {selectedDashboard && (() => {
+          const ds = datasets.find(d => d.id === selectedDashboard.dataset_id)
+          return ds ? (
+            <span style={{
+              fontSize:     11,
+              fontWeight:   500,
+              color:        'var(--primary-500)',
+              background:   'var(--primary-50)',
+              borderRadius: 8,
+              padding:      '2px 8px',
+              whiteSpace:   'nowrap',
+              flexShrink:   0,
+            }}>
+              {ds.name}
+            </span>
+          ) : null
+        })()}
+
+        <MessageOutlined style={{ color: 'var(--text-tertiary)', fontSize: 15, flexShrink: 0 }} />
+        <input
+          ref={quickInputRef}
+          value={quickQuery}
+          onChange={(e) => setQuickQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submitQuickQuery(quickQuery)
           }}
-        >
-          <MessageOutlined style={{ color: 'var(--text-tertiary)', fontSize: 15, flexShrink: 0 }} />
-          <input
-            value={quickQuery}
-            onChange={(e) => setQuickQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') submitQuickQuery(quickQuery)
-            }}
-            placeholder="向 AI 提问数据…按 Enter 进入对话"
-            style={{
-              flex:       1,
-              border:     'none',
-              background: 'transparent',
-              outline:    'none',
-              fontSize:   14,
-              color:      'var(--text-primary)',
-              fontFamily: 'inherit',
-            }}
-          />
-          <Button
-            type="primary"
-            size="small"
-            icon={<SendOutlined />}
-            disabled={!quickQuery.trim()}
-            onClick={() => submitQuickQuery(quickQuery)}
-            style={{ background: '#6C5CE7', border: 'none', borderRadius: 10, flexShrink: 0 }}
-          />
-        </div>
+          placeholder="向 AI 提问数据… Enter 发送，⌘K 聚焦"
+          style={{
+            flex:       1,
+            border:     'none',
+            background: 'transparent',
+            outline:    'none',
+            fontSize:   14,
+            color:      'var(--text-primary)',
+            fontFamily: 'inherit',
+          }}
+        />
+        <Button
+          type="primary"
+          size="small"
+          icon={<SendOutlined />}
+          disabled={!quickQuery.trim()}
+          onClick={() => submitQuickQuery(quickQuery)}
+          style={{ background: '#6C5CE7', border: 'none', borderRadius: 10, flexShrink: 0 }}
+        />
       </div>
 
       {/* ── Modals ── */}

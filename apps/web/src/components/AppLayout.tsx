@@ -52,6 +52,30 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     if (viewState === 'dashboard' || viewState === 'returning') particleRef.current?.setMode('drift')
   }, [viewState])
 
+  // Global keyboard shortcuts
+  const { reset: resetView } = useViewStore()
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey
+      // Cmd/Ctrl+D → toggle theme
+      if (mod && e.key === 'd') {
+        e.preventDefault()
+        toggleTheme()
+      }
+      // Esc → return to dashboard if in result overlay
+      if (e.key === 'Escape' && viewState !== 'dashboard' && viewState !== 'returning') {
+        resetView()
+      }
+      // Cmd/Ctrl+K → focus floating input (dispatches custom event)
+      if (mod && e.key === 'k') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('focus-quick-input'))
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [viewState, toggleTheme, resetView])
+
   const MENU_GROUPS = [
     {
       label: 'MENU',
@@ -77,8 +101,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }
 
   // CSS-variable-based sidebar colors
-  const sidebarBg     = isDark ? 'rgba(16, 18, 28, 0.96)'  : 'rgba(255, 255, 255, 0.96)'
-  const sidebarBorder = isDark ? 'rgba(255,255,255,0.05)'  : 'rgba(0,0,0,0.06)'
+  const sidebarBg     = isExpanded
+    ? 'var(--sidebar-bg-expanded)'
+    : 'var(--sidebar-bg-collapsed)'
+  const sidebarBorder = isDark ? 'rgba(162,155,254,0.06)'  : 'rgba(0,0,0,0.06)'
   const textPrimary   = isDark ? '#E8ECF3' : '#1A1D2E'
   const textSecondary = isDark ? '#9CA3B4' : '#5F6B7A'
   const textTertiary  = isDark ? '#5F6B7A' : '#9CA3B4'
@@ -119,7 +145,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             top:        0,
             bottom:     0,
             zIndex:     99,
-            background: 'rgba(0,0,0,0.06)',
+            background: 'var(--sidebar-overlay)',
             cursor:     'default',
           }}
           onClick={() => setIsExpanded(false)}
@@ -135,7 +161,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           bottom:     0,
           width:      isExpanded ? 240 : 64,
           transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
-          background: sidebarBg,
+          background:    sidebarBg,
+          backdropFilter: isExpanded ? 'blur(20px)' : 'blur(12px)',
+          WebkitBackdropFilter: isExpanded ? 'blur(20px)' : 'blur(12px)',
           borderRight: `1px solid ${sidebarBorder}`,
           zIndex:     100,
           display:    'flex',

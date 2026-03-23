@@ -13,10 +13,13 @@ interface Particle {
   vy: number
   opacity: number
   colorIdx: number
+  // ripple color transition
+  transitionDelay?: number   // frames remaining before color switch
+  targetColorIdx?: number
 }
 
 const LIGHT_COLORS = ['#6C5CE7', '#A29BFE', '#00C48C', '#FFB946', '#3B82F6', '#FF6B81']
-const DARK_COLORS  = ['#8B7FFF', '#C4BFFE', '#00E0A3', '#FFC95A', '#60A5FA', '#FF8FA3']
+const DARK_COLORS  = ['#A29BFE', '#C4B5FD', '#00E6A0', '#FFD166', '#60A5FA', '#FF6B81']
 
 const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -33,7 +36,6 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
     setMode(mode) {
       stateRef.current.mode = mode
       stateRef.current.modeStartTime = performance.now()
-      // On explode: scatter all particles outward from center
       if (mode === 'explode') {
         const canvas = canvasRef.current
         if (canvas) {
@@ -50,31 +52,47 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
         }
       }
     },
-    setTheme(theme) { stateRef.current.theme = theme },
+    setTheme(theme) {
+      const prev = stateRef.current.theme
+      stateRef.current.theme = theme
+      // Ripple color transition: wave from center outward
+      if (prev !== theme) {
+        const canvas = canvasRef.current
+        if (canvas) {
+          const cx = canvas.width / 2
+          const cy = canvas.height / 2
+          const maxDist = Math.sqrt(cx * cx + cy * cy)
+          const newColors = theme === 'dark' ? DARK_COLORS : LIGHT_COLORS
+          for (const p of stateRef.current.particles) {
+            const dist = Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2)
+            p.transitionDelay = Math.round((dist / maxDist) * 36)  // up to ~36 frames = 0.6s
+            p.targetColorIdx  = Math.floor(Math.random() * newColors.length)
+          }
+        }
+      }
+    },
   }))
 
   useEffect(() => {
     const canvasEl = canvasRef.current
     if (!canvasEl) return
-    const canvas: HTMLCanvasElement = canvasEl   // non-null alias for closures
+    const canvas: HTMLCanvasElement = canvasEl
     const ctx = canvas.getContext('2d')!
     const state = stateRef.current
 
-    // Detect low-end device
     state.isLowEnd = navigator.hardwareConcurrency != null && navigator.hardwareConcurrency <= 2
 
     function init() {
       canvas.width  = window.innerWidth
       canvas.height = window.innerHeight
 
-      // Clear canvas fully on init
       const bgColor = state.theme === 'dark' ? '#0A0C14' : '#FFFFFF'
       ctx.fillStyle = bgColor
       ctx.fillRect(0, 0, canvas.width, canvas.height)
 
       const area  = canvas.width * canvas.height
       const count = state.isLowEnd
-        ? 40
+        ? 30
         : Math.min(120, Math.max(80, Math.floor(area / 15000)))
 
       state.particles = Array.from({ length: count }, () => ({
@@ -91,18 +109,19 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
     let lastFrame = 0
 
     function draw(time: number) {
-      if (time - lastFrame < 16) return  // ~60fps cap
+      if (time - lastFrame < 16) return
       lastFrame = time
 
       const { theme, particles, isLowEnd } = state
-      const isDark   = theme === 'dark'
+      const isDark    = theme === 'dark'
       const w = canvas.width
       const h = canvas.height
-      const colors   = isDark ? DARK_COLORS : LIGHT_COLORS
-      const bgColor  = isDark ? '#0A0C14' : '#FFFFFF'
+      const colors    = isDark ? DARK_COLORS : LIGHT_COLORS
+      const bgColor   = isDark ? '#0A0C14' : '#FFFFFF'
       const lineColor = isDark ? '#A29BFE' : '#6C5CE7'
+      const lineBase  = isDark ? 0.10 : 0.06   // brighter connections in dark
 
-      // Trail effect — semi-transparent fill instead of full clear
+      // Trail
       ctx.globalAlpha = 0.14
       ctx.fillStyle   = bgColor
       ctx.fillRect(0, 0, w, h)
@@ -115,23 +134,28 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
       const elapsed = time - modeStartTime
 
       for (const p of particles) {
+        // Ripple color transition
+        if (p.transitionDelay !== undefined) {
+          p.transitionDelay -= 1
+          if (p.transitionDelay <= 0) {
+            p.colorIdx = p.targetColorIdx!
+            p.transitionDelay = undefined
+            p.targetColorIdx  = undefined
+          }
+        }
+
         if (mode === 'converge') {
-          // Pull toward center, accelerating over 2 s
           const strength = Math.min(0.05 + elapsed * 0.00004, 0.18)
           p.vx += (cx - p.x) * strength * 0.04
           p.vy += (cy - p.y) * strength * 0.04
-          // Add a slight clockwise swirl
           const swirl = 0.015
           p.vx += -p.vy * swirl
           p.vy +=  p.vx * swirl
-          // Dampen speed
           p.vx *= 0.94
           p.vy *= 0.94
         } else if (mode === 'explode') {
-          // Slow down after burst
           p.vx *= 0.93
           p.vy *= 0.93
-          // After 0.8 s revert to drift
           if (elapsed > 800) {
             p.vx = (Math.random() - 0.5) * 0.6
             p.vy = (Math.random() - 0.5) * 0.6
@@ -150,19 +174,18 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
         }
       }
 
-      // Draw connections (O(n²), fine for ≤120 particles)
+      // Connections
       if (!isLowEnd) {
         ctx.strokeStyle = lineColor
         ctx.lineWidth   = 0.5
         const n = particles.length
-
         for (let i = 0; i < n; i++) {
           for (let j = i + 1; j < n; j++) {
             const dx   = particles[i].x - particles[j].x
             const dy   = particles[i].y - particles[j].y
             const dist = Math.sqrt(dx * dx + dy * dy)
             if (dist < 120) {
-              ctx.globalAlpha = (1 - dist / 120) * 0.06
+              ctx.globalAlpha = (1 - dist / 120) * lineBase
               ctx.beginPath()
               ctx.moveTo(particles[i].x, particles[i].y)
               ctx.lineTo(particles[j].x, particles[j].y)
@@ -173,10 +196,11 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
         ctx.globalAlpha = 1
       }
 
-      // Draw particles
+      // Particles
       for (const p of particles) {
-        ctx.globalAlpha = p.opacity * (isDark ? 0.8 : 1)
-        ctx.fillStyle   = colors[p.colorIdx]
+        const col = colors[p.colorIdx] ?? colors[0]
+        ctx.globalAlpha = p.opacity * (isDark ? 0.9 : 1)
+        ctx.fillStyle   = col
         ctx.beginPath()
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2)
         ctx.fill()
