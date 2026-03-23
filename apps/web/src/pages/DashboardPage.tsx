@@ -124,7 +124,7 @@ function KpiCard({ widget, result }: { widget: DashboardWidget; result?: WidgetR
         style={{
           fontSize: 30,
           fontWeight: 700,
-          color: result.error ? '#ff4d4f' : '#2D3142',
+          color: result.error ? '#ff4d4f' : 'var(--text-primary)',
           lineHeight: 1.1,
           letterSpacing: '-0.5px',
         }}
@@ -167,7 +167,7 @@ function ChartCard({
   return (
     <div style={{ ...cardStyle, minHeight: 300 }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16, gap: 8 }}>
-        <Text style={{ fontSize: 13, fontWeight: 500, color: '#2D3142', flex: 1 }}>
+        <Text style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', flex: 1 }}>
           {widget.title}
         </Text>
         {chartTypeTag && (
@@ -176,9 +176,9 @@ function ChartCard({
               fontSize: 11,
               padding: '0 8px',
               borderRadius: 10,
-              background: '#F8F9FC',
-              color: '#9CA3B4',
-              border: '1px solid #E8ECF3',
+              background: 'var(--gray-100)',
+              color: 'var(--text-tertiary)',
+              border: '1px solid var(--border-color)',
             }}
           >
             {chartTypeTag}
@@ -277,8 +277,10 @@ function FilterBar({
   return (
     <div
       style={{
-        background: '#FFFFFF',
-        borderBottom: '1px solid #E8ECF3',
+        background: 'var(--bg-glass)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        borderBottom: '1px solid var(--border-color)',
         padding: '0 24px',
         height: 52,
         display: 'flex',
@@ -505,7 +507,7 @@ function AddChartModal({
                         }}
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: '#2D3142', marginBottom: 2 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2 }}>
                             {q.title}
                           </div>
                           <div style={{ fontSize: 12, color: '#9CA3B4' }}>
@@ -877,8 +879,8 @@ export default function DashboardPage() {
         }}
       >
         <BarChartOutlined style={{ color: '#6C5CE7', fontSize: 18 }} />
-        <Text style={{ fontSize: 16, fontWeight: 500, color: '#2D3142' }}>数据看板</Text>
-        <div style={{ width: 1, height: 20, background: '#E8ECF3' }} />
+        <Text style={{ fontSize: 16, fontWeight: 500, color: 'var(--text-primary)' }}>数据看板</Text>
+        <div style={{ width: 1, height: 20, background: 'var(--border-color)' }} />
 
         {/* OptGroup selector */}
         <Select
