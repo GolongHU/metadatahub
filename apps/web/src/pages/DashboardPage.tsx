@@ -98,15 +98,18 @@ function KpiCard({ widget, result, isDark }: { widget: DashboardWidget; result?:
   const cardBase: React.CSSProperties = {
     borderRadius: 18,
     background: hovered
-      ? (isDark ? 'rgba(42,37,80,0.35)' : 'rgba(255,255,255,0.75)')
+      ? (isDark ? 'rgba(42,37,80,0.35)' : 'rgba(255,255,255,0.82)')
       : (isDark ? 'rgba(26,29,46,0.4)' : 'rgba(255,255,255,0.65)'),
     backdropFilter: 'blur(16px)',
     WebkitBackdropFilter: 'blur(16px)',
     border: hovered
-      ? `1px solid rgba(162,155,254,0.15)`
-      : `1px solid rgba(162,155,254,0.06)`,
+      ? `1px solid rgba(${isDark ? '162,155,254' : '108,92,231'},0.15)`
+      : `1px solid rgba(${isDark ? '162,155,254' : '108,92,231'},0.08)`,
+    boxShadow: isDark
+      ? '0 4px 24px rgba(0,0,0,0.2)'
+      : '0 2px 12px rgba(108,92,231,0.04), inset 0 1px 0 rgba(255,255,255,0.8)',
     padding: '18px 22px',
-    transition: 'background 0.2s, border-color 0.2s',
+    transition: 'background 0.2s, border-color 0.2s, box-shadow 0.2s',
     cursor: 'default',
   }
 
@@ -182,9 +185,9 @@ function KpiCard({ widget, result, isDark }: { widget: DashboardWidget; result?:
       </div>
       <div
         style={{
-          fontSize: 28,
+          fontSize: 32,
           fontWeight: 600,
-          color: result.error ? '#ff4d4f' : '#E8ECF3',
+          color: result.error ? '#ff4d4f' : (isDark ? '#E8ECF3' : '#1A1D2E'),
           lineHeight: 1.15,
           letterSpacing: '-0.5px',
         }}
@@ -230,16 +233,22 @@ function RankingCard({
   const cardBase: React.CSSProperties = {
     borderRadius: 18,
     background: hovered
-      ? (isDark ? 'rgba(42,37,80,0.35)' : 'rgba(255,255,255,0.75)')
+      ? (isDark ? 'rgba(42,37,80,0.35)' : 'rgba(255,255,255,0.82)')
       : (isDark ? 'rgba(26,29,46,0.4)' : 'rgba(255,255,255,0.65)'),
     backdropFilter: 'blur(16px)',
     WebkitBackdropFilter: 'blur(16px)',
     border: hovered
-      ? `1px solid rgba(162,155,254,0.15)`
-      : `1px solid rgba(162,155,254,0.06)`,
+      ? `1px solid rgba(${isDark ? '162,155,254' : '108,92,231'},0.15)`
+      : `1px solid rgba(${isDark ? '162,155,254' : '108,92,231'},0.08)`,
+    boxShadow: isDark
+      ? '0 4px 24px rgba(0,0,0,0.2)'
+      : '0 2px 12px rgba(108,92,231,0.04), inset 0 1px 0 rgba(255,255,255,0.8)',
     padding: '18px 22px',
-    minHeight: 300,
-    transition: 'background 0.2s, border-color 0.2s',
+    height: '100%',
+    minHeight: 220,
+    display: 'flex',
+    flexDirection: 'column',
+    transition: 'background 0.2s, border-color 0.2s, box-shadow 0.2s',
   }
 
   return (
@@ -250,7 +259,7 @@ function RankingCard({
     >
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16, gap: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 500, color: '#E8ECF3', flex: 1 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: isDark ? '#E8ECF3' : '#2D3142', flex: 1 }}>
           {widget.title}
         </span>
         <span
@@ -301,6 +310,7 @@ function RankingCard({
       </div>
 
       {/* Content */}
+      <div style={{ flex: 1, minHeight: 0 }}>
       {!result ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {Array.from({ length: 5 }).map((_, i) => (
@@ -352,7 +362,7 @@ function RankingCard({
                   flex: 1,
                   height: 18,
                   borderRadius: 4,
-                  background: 'rgba(162,155,254,0.06)',
+                  background: isDark ? 'rgba(162,155,254,0.06)' : 'rgba(108,92,231,0.05)',
                   position: 'relative',
                   overflow: 'hidden',
                 }}
@@ -415,6 +425,7 @@ function RankingCard({
           </div>
         )
       })()}
+      </div>
     </div>
   )
 }
@@ -448,16 +459,22 @@ function ChartCard({
   const cardBase: React.CSSProperties = {
     borderRadius: 18,
     background: hovered
-      ? (isDark ? 'rgba(42,37,80,0.35)' : 'rgba(255,255,255,0.75)')
+      ? (isDark ? 'rgba(42,37,80,0.35)' : 'rgba(255,255,255,0.82)')
       : (isDark ? 'rgba(26,29,46,0.4)' : 'rgba(255,255,255,0.65)'),
     backdropFilter: 'blur(16px)',
     WebkitBackdropFilter: 'blur(16px)',
     border: hovered
-      ? `1px solid rgba(162,155,254,0.15)`
-      : `1px solid rgba(162,155,254,0.06)`,
+      ? `1px solid rgba(${isDark ? '162,155,254' : '108,92,231'},0.15)`
+      : `1px solid rgba(${isDark ? '162,155,254' : '108,92,231'},0.08)`,
+    boxShadow: isDark
+      ? '0 4px 24px rgba(0,0,0,0.2)'
+      : '0 2px 12px rgba(108,92,231,0.04), inset 0 1px 0 rgba(255,255,255,0.8)',
     padding: '18px 22px',
-    minHeight: 300,
-    transition: 'background 0.2s, border-color 0.2s',
+    height: '100%',
+    minHeight: 220,
+    display: 'flex',
+    flexDirection: 'column',
+    transition: 'background 0.2s, border-color 0.2s, box-shadow 0.2s',
   }
 
   return (
@@ -467,7 +484,7 @@ function ChartCard({
       onMouseLeave={() => setHovered(false)}
     >
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16, gap: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 500, color: '#E8ECF3', flex: 1 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: isDark ? '#E8ECF3' : '#2D3142', flex: 1 }}>
           {widget.title}
         </span>
         {chartTypeLabel && (
@@ -517,43 +534,44 @@ function ChartCard({
           </div>
         )}
       </div>
-      {!result ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div
-              key={i}
-              style={{
-                height: 14,
-                borderRadius: 4,
-                background: isDark ? 'rgba(162,155,254,0.06)' : 'rgba(0,0,0,0.05)',
-                animation: 'live-pulse 1.5s ease-in-out infinite',
-                animationDelay: `${i * 0.12}s`,
-                width: `${90 - i * 8}%`,
-              }}
-            />
-          ))}
-        </div>
-      ) : result.error ? (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: 200,
-            color: '#ff4d4f',
-            fontSize: 12,
-          }}
-        >
-          {result.error}
-        </div>
-      ) : (
-        <ChartWidget
-          chartType={(widget.chart_type ?? 'bar') as ChartType}
-          columns={result.columns}
-          rows={result.rows}
-          height={240}
-        />
-      )}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {!result ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 8 }}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  height: 14,
+                  borderRadius: 4,
+                  background: isDark ? 'rgba(162,155,254,0.06)' : 'rgba(0,0,0,0.05)',
+                  animation: 'live-pulse 1.5s ease-in-out infinite',
+                  animationDelay: `${i * 0.12}s`,
+                  width: `${90 - i * 8}%`,
+                }}
+              />
+            ))}
+          </div>
+        ) : result.error ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flex: 1,
+              color: '#ff4d4f',
+              fontSize: 12,
+            }}
+          >
+            {result.error}
+          </div>
+        ) : (
+          <ChartWidget
+            chartType={(widget.chart_type ?? 'bar') as ChartType}
+            columns={result.columns}
+            rows={result.rows}
+          />
+        )}
+      </div>
     </div>
   )
 }
@@ -766,11 +784,13 @@ function AiBubble({
   disabled,
   bubbleThinking,
   quickInputRef,
+  isDark,
 }: {
   onSubmit: (q: string) => void
   disabled?: boolean
   bubbleThinking?: boolean
   quickInputRef: React.RefObject<HTMLInputElement>
+  isDark: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const [input, setInput] = useState('')
@@ -916,7 +936,7 @@ function AiBubble({
           position: 'absolute',
           inset: 0,
           borderRadius: '50%',
-          border: '2px solid rgba(162,155,254,0.3)',
+          border: `2px solid ${isDark ? 'rgba(162,155,254,0.3)' : 'rgba(108,92,231,0.25)'}`,
           animation: 'db-ping 2s ease-out infinite',
           pointerEvents: 'none',
         }}
@@ -928,7 +948,7 @@ function AiBubble({
           inset: 0,
           borderRadius: '50%',
           background: 'linear-gradient(135deg, #6C5CE7, #A29BFE)',
-          boxShadow: '0 4px 24px rgba(108,92,231,0.4)',
+          boxShadow: '0 4px 24px rgba(108,92,231,0.35)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -1886,6 +1906,8 @@ export default function DashboardPage() {
           paddingTop: 56,
           paddingBottom: 80,
           boxSizing: 'border-box',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         {/* No dashboards at all */}
@@ -1928,7 +1950,7 @@ export default function DashboardPage() {
         )}
 
         {selectedDashboard && (
-          <>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             {/* Applied filter indicator */}
             {Object.values(appliedFilters).some(Boolean) && (
               <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1942,11 +1964,11 @@ export default function DashboardPage() {
             {isEmptyDashboard ? (
               <div
                 style={{
+                  flex: 1,
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  height: '60%',
                 }}
               >
                 <div
@@ -1984,7 +2006,7 @@ export default function DashboardPage() {
                 </div>
               </div>
             ) : (
-              <>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
                 {sortedRowKeys.map((rowKey, rowIdx) => {
                   const rowWidgets = widgetsByRow[rowKey].sort((a, b) => a.position.col - b.position.col)
                   const isKpiRow = rowWidgets.every((w) => w.type === 'kpi')
@@ -2000,7 +2022,8 @@ export default function DashboardPage() {
                           ? 'repeat(auto-fit, minmax(180px, 1fr))'
                           : rowWidgets.map((w) => `${w.position.width}fr`).join(' '),
                         gap: isKpiRow ? 12 : 16,
-                        marginBottom: 16,
+                        flex: isKpiRow ? 'none' : 1,
+                        minHeight: isKpiRow ? undefined : 0,
                         ...(transitionState === 'collapsing' ? {
                           animation: `card-fly-out 0.5s cubic-bezier(0.55,0,1,0.8) ${rowIdx * 80}ms both`,
                         } : transitionState === 'returning' ? {
@@ -2062,9 +2085,9 @@ export default function DashboardPage() {
                     </Button>
                   </div>
                 )}
-              </>
+              </div>
             )}
-          </>
+          </div>
         )}
       </div>
 
@@ -2077,6 +2100,7 @@ export default function DashboardPage() {
         disabled={!selectedDashboard}
         bubbleThinking={bubbleThinking}
         quickInputRef={quickInputRef}
+        isDark={isDark}
       />
 
       {/* ── Modals ── */}

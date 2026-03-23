@@ -86,7 +86,7 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
       canvas.width  = window.innerWidth
       canvas.height = window.innerHeight
 
-      const bgColor = state.theme === 'dark' ? '#0A0C14' : '#FFFFFF'
+      const bgColor = state.theme === 'dark' ? '#0A0C14' : '#F4F3FF'
       ctx.fillStyle = bgColor
       ctx.fillRect(0, 0, canvas.width, canvas.height)
 
@@ -101,7 +101,7 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
         radius:   Math.pow(Math.random(), 2) * 5 + 1,
         vx:       (Math.random() - 0.5) * 0.6,
         vy:       (Math.random() - 0.5) * 0.6,
-        opacity:  Math.random() * 0.25 + 0.1,
+        opacity:  Math.random() * 0.22 + 0.13,
         colorIdx: Math.floor(Math.random() * 6),
       }))
     }
@@ -117,9 +117,9 @@ const ParticleBackground = forwardRef<ParticleSystemRef>((_, ref) => {
       const w = canvas.width
       const h = canvas.height
       const colors    = isDark ? DARK_COLORS : LIGHT_COLORS
-      const bgColor   = isDark ? '#0A0C14' : '#FFFFFF'
+      const bgColor   = isDark ? '#0A0C14' : '#F4F3FF'
       const lineColor = isDark ? '#A29BFE' : '#6C5CE7'
-      const lineBase  = isDark ? 0.10 : 0.06   // brighter connections in dark
+      const lineBase  = isDark ? 0.10 : 0.10   // same visibility in both modes
 
       // Trail
       ctx.globalAlpha = 0.14

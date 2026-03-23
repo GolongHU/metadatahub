@@ -8,7 +8,7 @@ interface ChartWidgetProps {
   chartType: ChartType
   columns: string[]
   rows: unknown[][]
-  height?: number
+  height?: number | string
 }
 
 // ── Value coercion ─────────────────────────────────────────────────────────────
@@ -89,7 +89,19 @@ function buildBarLine(chartType: 'bar' | 'line', columns: string[], rows: unknow
       data: xData,
       axisLine: { lineStyle: { color: t.axisLine } },
       axisTick: { show: false },
-      axisLabel: { color: t.axisLabel, fontSize: 12, interval: 0, rotate: hasLongLabels ? 30 : 0 },
+      axisLabel: {
+        color: t.axisLabel,
+        fontSize: 11,
+        interval: 'auto',
+        rotate: 0,
+        formatter: (val: string) => {
+          const s = String(val)
+          // "20240315" → "24-03", "2024-03-15" → "03-15"
+          if (/^\d{8}$/.test(s)) return s.slice(2, 4) + '-' + s.slice(4, 6)
+          if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(5, 10)
+          return s.length > 8 ? s.slice(0, 8) + '…' : s
+        },
+      },
       splitLine: { show: false },
     },
     yAxis: {
@@ -97,7 +109,7 @@ function buildBarLine(chartType: 'bar' | 'line', columns: string[], rows: unknow
       axisLine: { show: false },
       axisTick: { show: false },
       axisLabel: { color: t.axisLabel, fontSize: 12, formatter: yFormatter },
-      splitLine: { lineStyle: { color: t.splitLine, type: 'dashed' } },
+      splitLine: { lineStyle: { color: isDark ? 'rgba(162,155,254,0.04)' : 'rgba(0,0,0,0.04)', type: 'dashed' } },
     },
     series,
   }
@@ -280,7 +292,7 @@ export default function ChartWidget({ chartType, columns, rows, height = 360 }: 
         : buildBarLine(chartType, columns, rows, isDark)
 
   const effectiveHeight =
-    chartType === 'bar_horizontal' ? Math.max(200, rows.length * 36 + 60) : height
+    chartType === 'bar_horizontal' ? Math.max(200, rows.length * 36 + 60) : (height ?? '100%')
 
   return (
     <ReactECharts
