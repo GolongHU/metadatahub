@@ -1,27 +1,23 @@
 import {
   ArrowDownOutlined,
   ArrowUpOutlined,
-  BarChartOutlined,
   DeleteOutlined,
+  DownOutlined,
   EditOutlined,
-  EllipsisOutlined,
+  ExpandOutlined,
   FilterOutlined,
-  MessageOutlined,
   PlusOutlined,
   ReloadOutlined,
   SendOutlined,
 } from '@ant-design/icons'
 import {
   Button,
-  Dropdown,
   Empty,
   Input,
   Modal,
   Select,
-  Skeleton,
   Space,
   Tabs,
-  Tag,
   Tooltip,
   Typography,
   message,
@@ -32,6 +28,7 @@ import ChartWidget from '../components/ChartWidget'
 import { dashboardApi, datasetsApi, queryApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { useChatStore, type RecentQuery } from '../stores/chatStore'
+import { useThemeStore } from '../stores/themeStore'
 import { useViewStore } from '../stores/useViewStore'
 import type {
   ChartType,
@@ -45,7 +42,7 @@ import type {
   WidgetResult,
 } from '../types'
 
-const { Text, Title } = Typography
+const { Text } = Typography
 const { TextArea } = Input
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -70,25 +67,75 @@ const GROUP_LABEL: Record<string, string> = {
   personal: '个人看板',
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ── Injected Styles ───────────────────────────────────────────────────────────
 
-const cardStyle: React.CSSProperties = {
-  background:         'var(--bg-glass)',
-  backdropFilter:     'blur(16px)',
-  WebkitBackdropFilter: 'blur(16px)',
-  borderRadius:       20,
-  padding:            '20px 24px',
-  boxShadow:          'var(--bg-glass-shadow)',
-  border:             '1px solid var(--bg-glass-border)',
+const INJECTED_STYLES = `
+@keyframes live-pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+@keyframes db-ping { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(1.65); opacity: 0; } }
+@keyframes db-expand { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: scale(1); } }
+@keyframes db-ball { 0% { offset-distance: 0%; } 100% { offset-distance: 100%; } }
+@keyframes db-trail { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -280; } }
+@keyframes db-glow { 0%,100% { filter: drop-shadow(0 0 3px rgba(255,255,255,0.6)); } 50% { filter: drop-shadow(0 0 8px rgba(255,255,255,0.95)); } }
+.db-ball-anim { offset-path: path('M24,56 C24,24 56,8 80,40 C104,72 136,56 136,56 C136,56 136,88 112,72 C88,40 56,56 24,56 Z'); offset-rotate: 0deg; animation: db-ball 2.5s ease-in-out infinite, db-glow 2.5s ease-in-out infinite; }
+.db-ball-fast { offset-path: path('M24,56 C24,24 56,8 80,40 C104,72 136,56 136,56 C136,56 136,88 112,72 C88,40 56,56 24,56 Z'); offset-rotate: 0deg; animation: db-ball 0.7s ease-in-out infinite, db-glow 0.7s ease-in-out infinite; }
+.db-trail-anim { animation: db-trail 2.5s linear infinite; }
+.db-trail-fast { animation: db-trail 0.7s linear infinite; }
+`
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatValue(numVal: number): string {
+  if (numVal >= 1e8) return `${(numVal / 1e8).toFixed(2)}亿`
+  if (numVal >= 1e4) return `${(numVal / 1e4).toFixed(1)}万`
+  return String(numVal)
 }
 
-// ── KPI Card ──────────────────────────────────────────────────────────────────
+// ── KpiCard ───────────────────────────────────────────────────────────────────
 
-function KpiCard({ widget, result }: { widget: DashboardWidget; result?: WidgetResult }) {
+function KpiCard({ widget, result, isDark }: { widget: DashboardWidget; result?: WidgetResult; isDark: boolean }) {
+  const [hovered, setHovered] = useState(false)
+
+  const cardBase: React.CSSProperties = {
+    borderRadius: 18,
+    background: hovered
+      ? (isDark ? 'rgba(42,37,80,0.35)' : 'rgba(255,255,255,0.75)')
+      : (isDark ? 'rgba(26,29,46,0.4)' : 'rgba(255,255,255,0.65)'),
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
+    border: hovered
+      ? `1px solid rgba(162,155,254,0.15)`
+      : `1px solid rgba(162,155,254,0.06)`,
+    padding: '18px 22px',
+    transition: 'background 0.2s, border-color 0.2s',
+    cursor: 'default',
+  }
+
   if (!result) {
     return (
-      <div style={cardStyle}>
-        <Skeleton active paragraph={{ rows: 1 }} title={{ width: '60%' }} />
+      <div
+        style={cardBase}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        <div
+          style={{
+            height: 11,
+            width: '55%',
+            borderRadius: 6,
+            background: isDark ? 'rgba(162,155,254,0.08)' : 'rgba(0,0,0,0.06)',
+            marginBottom: 14,
+            animation: 'live-pulse 1.5s ease-in-out infinite',
+          }}
+        />
+        <div
+          style={{
+            height: 28,
+            width: '70%',
+            borderRadius: 6,
+            background: isDark ? 'rgba(162,155,254,0.08)' : 'rgba(0,0,0,0.06)',
+            animation: 'live-pulse 1.5s ease-in-out infinite 0.3s',
+          }}
+        />
       </div>
     )
   }
@@ -116,16 +163,29 @@ function KpiCard({ widget, result }: { widget: DashboardWidget; result?: WidgetR
   }
 
   return (
-    <div style={cardStyle}>
-      <Text style={{ fontSize: 12, color: '#9CA3B4', display: 'block', marginBottom: 10 }}>
-        {widget.title}
-      </Text>
+    <div
+      style={cardBase}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <div
         style={{
-          fontSize: 30,
-          fontWeight: 700,
-          color: result.error ? '#ff4d4f' : 'var(--text-primary)',
-          lineHeight: 1.1,
+          fontSize: 11,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          color: '#5F6B7A',
+          marginBottom: 10,
+          display: 'block',
+        }}
+      >
+        {widget.title}
+      </div>
+      <div
+        style={{
+          fontSize: 28,
+          fontWeight: 600,
+          color: result.error ? '#ff4d4f' : '#E8ECF3',
+          lineHeight: 1.15,
           letterSpacing: '-0.5px',
         }}
       >
@@ -141,11 +201,12 @@ function KpiCard({ widget, result }: { widget: DashboardWidget; result?: WidgetR
   )
 }
 
-// ── Chart Card ────────────────────────────────────────────────────────────────
+// ── RankingCard ───────────────────────────────────────────────────────────────
 
-function ChartCard({
+function RankingCard({
   widget,
   result,
+  isDark,
   onRemove,
   onMoveUp,
   onMoveDown,
@@ -155,6 +216,7 @@ function ChartCard({
 }: {
   widget: DashboardWidget
   result?: WidgetResult
+  isDark: boolean
   onRemove?: () => void
   onMoveUp?: () => void
   onMoveDown?: () => void
@@ -162,30 +224,49 @@ function ChartCard({
   isFirstRow?: boolean
   isLastRow?: boolean
 }) {
-  const chartTypeTag = widget.chart_type && CHART_TYPE_LABEL[widget.chart_type]
+  const [hovered, setHovered] = useState(false)
+  const [tooltipRow, setTooltipRow] = useState<number | null>(null)
+
+  const cardBase: React.CSSProperties = {
+    borderRadius: 18,
+    background: hovered
+      ? (isDark ? 'rgba(42,37,80,0.35)' : 'rgba(255,255,255,0.75)')
+      : (isDark ? 'rgba(26,29,46,0.4)' : 'rgba(255,255,255,0.65)'),
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
+    border: hovered
+      ? `1px solid rgba(162,155,254,0.15)`
+      : `1px solid rgba(162,155,254,0.06)`,
+    padding: '18px 22px',
+    minHeight: 300,
+    transition: 'background 0.2s, border-color 0.2s',
+  }
 
   return (
-    <div style={{ ...cardStyle, minHeight: 300 }}>
+    <div
+      style={cardBase}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16, gap: 8 }}>
-        <Text style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', flex: 1 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: '#E8ECF3', flex: 1 }}>
           {widget.title}
-        </Text>
-        {chartTypeTag && (
-          <Tag
-            style={{
-              fontSize: 11,
-              padding: '0 8px',
-              borderRadius: 10,
-              background: 'var(--gray-100)',
-              color: 'var(--text-tertiary)',
-              border: '1px solid var(--border-color)',
-            }}
-          >
-            {chartTypeTag}
-          </Tag>
-        )}
+        </span>
+        <span
+          style={{
+            fontSize: 10,
+            padding: '2px 8px',
+            borderRadius: 10,
+            background: 'rgba(162,155,254,0.08)',
+            color: '#5F6B7A',
+            border: 'none',
+          }}
+        >
+          {CHART_TYPE_LABEL[widget.chart_type ?? ''] ?? ''}
+        </span>
         {canEdit && (
-          <Space size={2}>
+          <div style={{ display: 'flex', gap: 2, opacity: hovered ? 1 : 0, transition: 'opacity 0.2s' }}>
             <Tooltip title="上移">
               <Button
                 type="text"
@@ -193,7 +274,7 @@ function ChartCard({
                 icon={<ArrowUpOutlined />}
                 onClick={onMoveUp}
                 disabled={isFirstRow}
-                style={{ color: isFirstRow ? '#E8ECF3' : '#C4CBD6' }}
+                style={{ color: isFirstRow ? 'rgba(232,236,243,0.3)' : 'rgba(232,236,243,0.6)' }}
               />
             </Tooltip>
             <Tooltip title="下移">
@@ -203,7 +284,7 @@ function ChartCard({
                 icon={<ArrowDownOutlined />}
                 onClick={onMoveDown}
                 disabled={isLastRow}
-                style={{ color: isLastRow ? '#E8ECF3' : '#C4CBD6' }}
+                style={{ color: isLastRow ? 'rgba(232,236,243,0.3)' : 'rgba(232,236,243,0.6)' }}
               />
             </Tooltip>
             <Tooltip title="移除图表">
@@ -212,14 +293,246 @@ function ChartCard({
                 size="small"
                 icon={<DeleteOutlined />}
                 onClick={onRemove}
-                style={{ color: '#C4CBD6' }}
+                style={{ color: 'rgba(232,236,243,0.6)' }}
               />
             </Tooltip>
-          </Space>
+          </div>
+        )}
+      </div>
+
+      {/* Content */}
+      {!result ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div
+              key={i}
+              style={{
+                height: 18,
+                borderRadius: 4,
+                background: isDark ? 'rgba(162,155,254,0.06)' : 'rgba(0,0,0,0.05)',
+                animation: 'live-pulse 1.5s ease-in-out infinite',
+                animationDelay: `${i * 0.15}s`,
+              }}
+            />
+          ))}
+        </div>
+      ) : result.error ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: '#ff4d4f', fontSize: 12 }}>
+          {result.error}
+        </div>
+      ) : (() => {
+        const rows = result.rows.slice(0, 10)
+        const maxVal = Math.max(...rows.map((r) => {
+          const v = r[1]
+          return typeof v === 'number' ? v : parseFloat(String(v ?? 0))
+        }), 1)
+        const leftRows = rows.slice(0, 5)
+        const rightRows = rows.slice(5, 10)
+
+        const renderRow = (r: unknown[], absIdx: number) => {
+          const nameVal = String(r[0] ?? '')
+          const numRaw = r[1]
+          const numV = typeof numRaw === 'number' ? numRaw : parseFloat(String(numRaw ?? 0))
+          const pct = Math.max(numV / maxVal, 0)
+          const opacity = 1.0 - (absIdx / Math.max(rows.length - 1, 1)) * 0.75
+          const isHovered = tooltipRow === absIdx
+
+          return (
+            <div
+              key={absIdx}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, position: 'relative' }}
+              onMouseEnter={() => setTooltipRow(absIdx)}
+              onMouseLeave={() => setTooltipRow(null)}
+            >
+              <span style={{ fontSize: 11, color: '#5F6B7A', width: 24, textAlign: 'right', flexShrink: 0 }}>
+                {absIdx + 1}
+              </span>
+              <div
+                style={{
+                  flex: 1,
+                  height: 18,
+                  borderRadius: 4,
+                  background: 'rgba(162,155,254,0.06)',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    height: '100%',
+                    width: `${pct * 100}%`,
+                    borderRadius: 4,
+                    background: 'linear-gradient(90deg, #6C5CE7, #A29BFE)',
+                    opacity,
+                    transition: 'width 0.5s ease',
+                  }}
+                />
+              </div>
+              <span style={{ fontSize: 11, color: '#9CA3B4', width: 48, textAlign: 'right', flexShrink: 0 }}>
+                {formatValue(numV)}
+              </span>
+              {isHovered && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '100%',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: 'rgba(20,22,32,0.95)',
+                    border: '1px solid rgba(162,155,254,0.15)',
+                    borderRadius: 8,
+                    padding: '6px 10px',
+                    fontSize: 11,
+                    color: '#E8ECF3',
+                    whiteSpace: 'nowrap',
+                    zIndex: 50,
+                    pointerEvents: 'none',
+                    backdropFilter: 'blur(12px)',
+                  }}
+                >
+                  {nameVal} · {formatValue(numV)}
+                </div>
+              )}
+            </div>
+          )
+        }
+
+        if (rows.length <= 5) {
+          return (
+            <div>
+              {leftRows.map((r, i) => renderRow(r, i))}
+            </div>
+          )
+        }
+
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+            <div>{leftRows.map((r, i) => renderRow(r, i))}</div>
+            <div>{rightRows.map((r, i) => renderRow(r, i + 5))}</div>
+          </div>
+        )
+      })()}
+    </div>
+  )
+}
+
+// ── ChartCard ─────────────────────────────────────────────────────────────────
+
+function ChartCard({
+  widget,
+  result,
+  isDark,
+  onRemove,
+  onMoveUp,
+  onMoveDown,
+  canEdit,
+  isFirstRow,
+  isLastRow,
+}: {
+  widget: DashboardWidget
+  result?: WidgetResult
+  isDark: boolean
+  onRemove?: () => void
+  onMoveUp?: () => void
+  onMoveDown?: () => void
+  canEdit?: boolean
+  isFirstRow?: boolean
+  isLastRow?: boolean
+}) {
+  const [hovered, setHovered] = useState(false)
+  const chartTypeLabel = widget.chart_type && CHART_TYPE_LABEL[widget.chart_type]
+
+  const cardBase: React.CSSProperties = {
+    borderRadius: 18,
+    background: hovered
+      ? (isDark ? 'rgba(42,37,80,0.35)' : 'rgba(255,255,255,0.75)')
+      : (isDark ? 'rgba(26,29,46,0.4)' : 'rgba(255,255,255,0.65)'),
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
+    border: hovered
+      ? `1px solid rgba(162,155,254,0.15)`
+      : `1px solid rgba(162,155,254,0.06)`,
+    padding: '18px 22px',
+    minHeight: 300,
+    transition: 'background 0.2s, border-color 0.2s',
+  }
+
+  return (
+    <div
+      style={cardBase}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16, gap: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: '#E8ECF3', flex: 1 }}>
+          {widget.title}
+        </span>
+        {chartTypeLabel && (
+          <span
+            style={{
+              fontSize: 10,
+              padding: '2px 8px',
+              borderRadius: 10,
+              background: 'rgba(162,155,254,0.08)',
+              color: '#5F6B7A',
+            }}
+          >
+            {chartTypeLabel}
+          </span>
+        )}
+        {canEdit && (
+          <div style={{ display: 'flex', gap: 2, opacity: hovered ? 1 : 0, transition: 'opacity 0.2s' }}>
+            <Tooltip title="上移">
+              <Button
+                type="text"
+                size="small"
+                icon={<ArrowUpOutlined />}
+                onClick={onMoveUp}
+                disabled={isFirstRow}
+                style={{ color: isFirstRow ? 'rgba(232,236,243,0.3)' : 'rgba(232,236,243,0.6)' }}
+              />
+            </Tooltip>
+            <Tooltip title="下移">
+              <Button
+                type="text"
+                size="small"
+                icon={<ArrowDownOutlined />}
+                onClick={onMoveDown}
+                disabled={isLastRow}
+                style={{ color: isLastRow ? 'rgba(232,236,243,0.3)' : 'rgba(232,236,243,0.6)' }}
+              />
+            </Tooltip>
+            <Tooltip title="移除图表">
+              <Button
+                type="text"
+                size="small"
+                icon={<DeleteOutlined />}
+                onClick={onRemove}
+                style={{ color: 'rgba(232,236,243,0.6)' }}
+              />
+            </Tooltip>
+          </div>
         )}
       </div>
       {!result ? (
-        <Skeleton active paragraph={{ rows: 6 }} title={false} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              style={{
+                height: 14,
+                borderRadius: 4,
+                background: isDark ? 'rgba(162,155,254,0.06)' : 'rgba(0,0,0,0.05)',
+                animation: 'live-pulse 1.5s ease-in-out infinite',
+                animationDelay: `${i * 0.12}s`,
+                width: `${90 - i * 8}%`,
+              }}
+            />
+          ))}
+        </div>
       ) : result.error ? (
         <div
           style={{
@@ -245,20 +558,26 @@ function ChartCard({
   )
 }
 
-// ── Filter Bar ────────────────────────────────────────────────────────────────
+// ── FilterDrawer ──────────────────────────────────────────────────────────────
 
-function FilterBar({
+function FilterDrawer({
+  open,
+  onClose,
   filters,
   datasetId,
   values,
   onChange,
   onApply,
+  isDark,
 }: {
+  open: boolean
+  onClose: () => void
   filters: DashboardFilter[]
   datasetId: string
   values: Record<string, string>
   onChange: (field: string, val: string) => void
   onApply: () => void
+  isDark: boolean
 }) {
   const [optionsMap, setOptionsMap] = useState<Record<string, string[] | null>>({})
 
@@ -272,45 +591,535 @@ function FilterBar({
     }
   }, [filters, datasetId])
 
-  if (!filters.length) return null
+  return (
+    <>
+      {/* Backdrop */}
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 14,
+            background: 'transparent',
+          }}
+          onClick={onClose}
+        />
+      )}
+
+      {/* Drawer panel */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: open ? 0 : -290,
+          width: 280,
+          height: '100%',
+          zIndex: 15,
+          background: isDark ? 'rgba(20,22,32,0.88)' : 'rgba(255,255,255,0.90)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          borderLeft: '1px solid rgba(162,155,254,0.08)',
+          transition: 'right 0.3s cubic-bezier(0.4,0,0.2,1)',
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '20px 20px 24px',
+          boxSizing: 'border-box',
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
+          <span
+            style={{
+              fontSize: 12,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              color: '#5F6B7A',
+              flex: 1,
+              fontWeight: 600,
+            }}
+          >
+            FILTERS
+          </span>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#5F6B7A',
+              fontSize: 16,
+              padding: '2px 6px',
+              borderRadius: 6,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Filter selects */}
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {filters.map((f) => {
+            const opts = optionsMap[f.field]
+            const isLoading = opts === null
+            return (
+              <div key={f.field}>
+                <div style={{ fontSize: 11, color: '#5F6B7A', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {f.label}
+                </div>
+                <Select
+                  allowClear
+                  style={{
+                    width: '100%',
+                  }}
+                  placeholder={f.label}
+                  value={values[f.field] || undefined}
+                  onChange={(v) => onChange(f.field, v ?? '')}
+                  loading={isLoading}
+                  options={(opts ?? []).map((o) => ({ value: o, label: o }))}
+                  size="middle"
+                />
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Apply button */}
+        <Button
+          type="primary"
+          onClick={() => { onApply(); onClose() }}
+          style={{
+            background: 'linear-gradient(135deg, #6C5CE7, #A29BFE)',
+            border: 'none',
+            borderRadius: 10,
+            height: 38,
+            marginTop: 20,
+            fontWeight: 500,
+          }}
+          block
+        >
+          应用筛选
+        </Button>
+      </div>
+    </>
+  )
+}
+
+// ── LiveTimestamp ─────────────────────────────────────────────────────────────
+
+function LiveTimestamp({ lastUpdated, isDark }: { lastUpdated: Date | null; isDark: boolean }) {
+  const [display, setDisplay] = useState('just now')
+
+  useEffect(() => {
+    const calc = () => {
+      if (!lastUpdated) { setDisplay('—'); return }
+      const secs = Math.floor((Date.now() - lastUpdated.getTime()) / 1000)
+      if (secs < 30) setDisplay('just now')
+      else if (secs < 60) setDisplay(`${secs}s ago`)
+      else if (secs < 3600) setDisplay(`${Math.floor(secs / 60)}m ago`)
+      else setDisplay(`${Math.floor(secs / 3600)}h ago`)
+    }
+    calc()
+    const id = setInterval(calc, 10000)
+    return () => clearInterval(id)
+  }, [lastUpdated])
 
   return (
     <div
       style={{
-        background: 'var(--bg-glass)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        borderBottom: '1px solid var(--border-color)',
-        padding: '0 24px',
-        height: 52,
+        position: 'absolute',
+        bottom: 20,
+        left: 20,
+        zIndex: 5,
         display: 'flex',
         alignItems: 'center',
-        gap: 12,
-        flexShrink: 0,
+        gap: 6,
+        pointerEvents: 'none',
       }}
     >
-      <FilterOutlined style={{ color: '#9CA3B4', fontSize: 14 }} />
-      <Text style={{ fontSize: 12, color: '#9CA3B4', marginRight: 4 }}>筛选</Text>
-      {filters.map((f) => {
-        const opts = optionsMap[f.field]
-        const isLoading = opts === null
-        return (
-          <Select
-            key={f.field}
-            allowClear
-            style={{ width: 180 }}
-            placeholder={f.label}
-            value={values[f.field] || undefined}
-            onChange={(v) => onChange(f.field, v ?? '')}
-            loading={isLoading}
-            options={(opts ?? []).map((o) => ({ value: o, label: o }))}
-            size="small"
+      <div
+        style={{
+          width: 5,
+          height: 5,
+          borderRadius: '50%',
+          background: '#00C48C',
+          animation: 'live-pulse 2s ease-in-out infinite',
+          flexShrink: 0,
+        }}
+      />
+      <span
+        style={{
+          fontSize: 11,
+          color: isDark ? '#9CA3B4' : '#3D4256',
+        }}
+      >
+        Updated {display}
+      </span>
+    </div>
+  )
+}
+
+// ── AiBubble ──────────────────────────────────────────────────────────────────
+
+function AiBubble({
+  onSubmit,
+  disabled,
+  bubbleThinking,
+  quickInputRef,
+}: {
+  onSubmit: (q: string) => void
+  disabled?: boolean
+  bubbleThinking?: boolean
+  quickInputRef: React.RefObject<HTMLInputElement>
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [input, setInput] = useState('')
+
+  useEffect(() => {
+    if (expanded) {
+      setTimeout(() => quickInputRef.current?.focus(), 50)
+    }
+  }, [expanded, quickInputRef])
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && expanded) setExpanded(false)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [expanded])
+
+  // Wire focus-quick-input event
+  useEffect(() => {
+    const onFocus = () => setExpanded(true)
+    window.addEventListener('focus-quick-input', onFocus)
+    return () => window.removeEventListener('focus-quick-input', onFocus)
+  }, [])
+
+  const handleSubmit = () => {
+    if (!input.trim()) return
+    onSubmit(input)
+    setInput('')
+    setExpanded(false)
+  }
+
+  const mobiusPath = "M24,56 C24,24 56,8 80,40 C104,72 136,56 136,56 C136,56 136,88 112,72 C88,40 56,56 24,56 Z"
+  const ballClass = bubbleThinking ? 'db-ball-fast' : 'db-ball-anim'
+  const trailClass = bubbleThinking ? 'db-trail-fast' : 'db-trail-anim'
+
+  if (expanded) {
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          right: 0,
+          width: 420,
+          zIndex: 20,
+          transformOrigin: 'bottom right',
+          animation: 'db-expand 0.2s cubic-bezier(0.2,0,0,1) both',
+        }}
+      >
+        <div
+          style={{
+            margin: '0 16px 16px',
+            borderRadius: 18,
+            background: 'rgba(20,22,32,0.92)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            border: '1px solid rgba(162,155,254,0.15)',
+            padding: '14px 16px',
+            boxShadow: '0 8px 40px rgba(108,92,231,0.25)',
+          }}
+        >
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            {/* Mini möbius */}
+            <svg width="28" height="20" viewBox="0 0 160 112" fill="none" style={{ flexShrink: 0 }}>
+              <path
+                d={mobiusPath}
+                fill="none"
+                stroke="rgba(162,155,254,0.25)"
+                strokeWidth="10"
+                strokeLinecap="round"
+              />
+              <path
+                d={mobiusPath}
+                fill="none"
+                stroke="rgba(162,155,254,0.5)"
+                strokeWidth="10"
+                strokeLinecap="round"
+                strokeDasharray="60 220"
+                className={trailClass}
+              />
+              <circle r="7" fill="white" className={ballClass} />
+            </svg>
+            <input
+              ref={quickInputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSubmit()
+                if (e.key === 'Escape') setExpanded(false)
+              }}
+              placeholder="向 AI 提问数据… Enter 发送"
+              style={{
+                flex: 1,
+                border: 'none',
+                background: 'transparent',
+                outline: 'none',
+                fontSize: 14,
+                color: '#E8ECF3',
+                fontFamily: 'inherit',
+              }}
+            />
+            <button
+              onClick={handleSubmit}
+              disabled={!input.trim() || disabled}
+              style={{
+                background: input.trim() && !disabled ? 'linear-gradient(135deg, #6C5CE7, #A29BFE)' : 'rgba(162,155,254,0.12)',
+                border: 'none',
+                borderRadius: 10,
+                width: 32,
+                height: 32,
+                cursor: input.trim() && !disabled ? 'pointer' : 'not-allowed',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                transition: 'background 0.2s',
+              }}
+            >
+              <SendOutlined style={{ color: input.trim() && !disabled ? 'white' : '#5F6B7A', fontSize: 13 }} />
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        bottom: 20,
+        right: 20,
+        zIndex: 20,
+        width: 52,
+        height: 52,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+      }}
+      onClick={() => !disabled && setExpanded(true)}
+    >
+      {/* Ping ring */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: '50%',
+          border: '2px solid rgba(162,155,254,0.3)',
+          animation: 'db-ping 2s ease-out infinite',
+          pointerEvents: 'none',
+        }}
+      />
+      {/* Main circle */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: '50%',
+          background: 'linear-gradient(135deg, #6C5CE7, #A29BFE)',
+          boxShadow: '0 4px 24px rgba(108,92,231,0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: disabled ? 0.5 : 1,
+        }}
+      >
+        <svg width="28" height="20" viewBox="0 0 160 112" fill="none">
+          <path
+            d={mobiusPath}
+            fill="none"
+            stroke="rgba(255,255,255,0.35)"
+            strokeWidth="10"
+            strokeLinecap="round"
           />
-        )
-      })}
-      <Button size="small" type="primary" onClick={onApply} style={{ marginLeft: 4 }}>
-        应用
-      </Button>
+          <path
+            d={mobiusPath}
+            fill="none"
+            stroke="rgba(255,255,255,0.7)"
+            strokeWidth="10"
+            strokeLinecap="round"
+            strokeDasharray="60 220"
+            className={trailClass}
+          />
+          <circle r="7" fill="white" className={ballClass} />
+        </svg>
+      </div>
+    </div>
+  )
+}
+
+// ── Dashboard Selector Dropdown ───────────────────────────────────────────────
+
+function DashboardSelector({
+  selectedDashboard,
+  dashboards,
+  onSelect,
+  isDark,
+}: {
+  selectedDashboard: DashboardDetail | null
+  dashboards: DashboardListItem[]
+  onSelect: (id: string) => void
+  isDark: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const fixedDashboards = dashboards.filter((d) => d.dashboard_type === 'fixed')
+  const autoDashboards = dashboards.filter((d) => d.dashboard_type === 'auto')
+  const personalDashboards = dashboards.filter((d) => d.dashboard_type === 'personal')
+  const grouped: Array<{ key: string; items: DashboardListItem[] }> = [
+    { key: 'fixed', items: fixedDashboards },
+    { key: 'auto', items: autoDashboards },
+    { key: 'personal', items: personalDashboards },
+  ].filter((g) => g.items.length > 0)
+
+  return (
+    <div ref={ref} style={{ position: 'relative', pointerEvents: 'auto' }}>
+      <div
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          cursor: 'pointer',
+          padding: '4px 8px',
+          borderRadius: 8,
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(162,155,254,0.08)' }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+      >
+        <span
+          style={{
+            fontSize: 14,
+            fontWeight: 500,
+            color: isDark ? '#E8ECF3' : '#1A1D2E',
+            transition: 'opacity 0.15s',
+          }}
+        >
+          {selectedDashboard?.name ?? '选择看板'}
+        </span>
+        <DownOutlined style={{ fontSize: 10, color: '#5F6B7A' }} />
+      </div>
+
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 8px)',
+            left: 0,
+            minWidth: 260,
+            background: isDark ? 'rgba(20,22,32,0.95)' : 'rgba(255,255,255,0.97)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            border: '1px solid rgba(162,155,254,0.12)',
+            borderRadius: 14,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+            overflow: 'hidden',
+            zIndex: 100,
+          }}
+        >
+          {grouped.map((group) => {
+            const tl = TYPE_LABEL[group.key]
+            return (
+              <div key={group.key}>
+                <div
+                  style={{
+                    fontSize: 10,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    color: '#5F6B7A',
+                    padding: '10px 14px 4px',
+                    fontWeight: 600,
+                  }}
+                >
+                  {GROUP_LABEL[group.key]}
+                </div>
+                {group.items.map((d) => (
+                  <div
+                    key={d.id}
+                    onClick={() => { onSelect(d.id); setOpen(false) }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 14px',
+                      cursor: 'pointer',
+                      background: d.id === selectedDashboard?.id
+                        ? 'rgba(108,92,231,0.12)'
+                        : 'transparent',
+                      transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (d.id !== selectedDashboard?.id)
+                        (e.currentTarget as HTMLDivElement).style.background = 'rgba(162,155,254,0.06)'
+                    }}
+                    onMouseLeave={(e) => {
+                      if (d.id !== selectedDashboard?.id)
+                        (e.currentTarget as HTMLDivElement).style.background = 'transparent'
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 10,
+                        padding: '1px 6px',
+                        borderRadius: 6,
+                        background: `${tl.color}18`,
+                        color: tl.color,
+                        flexShrink: 0,
+                        fontWeight: 500,
+                      }}
+                    >
+                      {tl.label}
+                    </span>
+                    <span
+                      style={{
+                        flex: 1,
+                        fontSize: 13,
+                        color: isDark ? '#E8ECF3' : '#1A1D2E',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {d.name}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#5F6B7A', flexShrink: 0 }}>
+                      {d.widget_count}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+          {grouped.length === 0 && (
+            <div style={{ padding: '20px 14px', fontSize: 12, color: '#5F6B7A', textAlign: 'center' }}>
+              暂无看板
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -384,6 +1193,16 @@ function CreateDashboardModal({
 }
 
 // ── Add Chart Modal ───────────────────────────────────────────────────────────
+
+const cardStyle: React.CSSProperties = {
+  background: 'var(--bg-glass)',
+  backdropFilter: 'blur(16px)',
+  WebkitBackdropFilter: 'blur(16px)',
+  borderRadius: 20,
+  padding: '20px 24px',
+  boxShadow: 'var(--bg-glass-shadow)',
+  border: '1px solid var(--bg-glass-border)',
+}
 
 function AddChartModal({
   open,
@@ -607,6 +1426,8 @@ function AddChartModal({
 export default function DashboardPage() {
   const [searchParams] = useSearchParams()
   const { user } = useAuthStore()
+  const { theme } = useThemeStore()
+  const isDark = theme === 'dark'
   const isAdmin = user?.role === 'admin'
 
   const [datasets, setDatasets] = useState<Dataset[]>([])
@@ -623,28 +1444,23 @@ export default function DashboardPage() {
   const [showRename, setShowRename] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [renameSaving, setRenameSaving] = useState(false)
-  const [quickQuery, setQuickQuery] = useState('')
+  const [showFilterDrawer, setShowFilterDrawer] = useState(false)
+  const [pageHovered, setPageHovered] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [showDashboardDropdown] = useState(false)
   const quickInputRef = useRef<HTMLInputElement>(null)
   const { viewState: transitionState, startTransition, setLoading: setTransitionLoading, setExploding, setRevealing, setChatResult, setError: setTransitionError, finishReturn } = useViewStore()
   const initRef = useRef(false)
-
-  // Cmd+K → focus floating input
-  useEffect(() => {
-    const onFocus = () => quickInputRef.current?.focus()
-    window.addEventListener('focus-quick-input', onFocus)
-    return () => window.removeEventListener('focus-quick-input', onFocus)
-  }, [])
 
   // After returning animation, restore normal dashboard state
   useEffect(() => {
     if (transitionState !== 'returning') return
     const t = setTimeout(() => finishReturn(), 600)
     return () => clearTimeout(t)
-  }, [transitionState])
+  }, [transitionState, finishReturn])
 
   const submitQuickQuery = (q: string) => {
     if (!q.trim() || !selectedDashboard) return
-    setQuickQuery('')
     const datasetId = selectedDashboard.dataset_id
     startTransition(q, datasetId)
 
@@ -706,6 +1522,7 @@ export default function DashboardPage() {
       const res = await dashboardApi.get(id)
       setSelectedDashboard(res.data)
       await runWidgetQueries(res.data, {})
+      setLastUpdated(new Date())
     } catch {
       message.error('看板加载失败')
     } finally {
@@ -719,6 +1536,7 @@ export default function DashboardPage() {
       const f = Object.fromEntries(Object.entries(activeFilters).filter(([, v]) => v !== ''))
       const res = await dashboardApi.query(dashboard.id, Object.keys(f).length ? f : undefined)
       setWidgetResults(res.data.widgets)
+      setLastUpdated(new Date())
     } catch {
       message.error('数据加载失败')
     } finally {
@@ -834,164 +1652,218 @@ export default function DashboardPage() {
     (isAdmin || selectedDashboard.dashboard_type === 'personal')
   const isEmptyDashboard = selectedDashboard != null && selectedDashboard.config.widgets.length === 0
 
-  const fixedDashboards = dashboards.filter((d) => d.dashboard_type === 'fixed')
-  const autoDashboards = dashboards.filter((d) => d.dashboard_type === 'auto')
-  const personalDashboards = dashboards.filter((d) => d.dashboard_type === 'personal')
+  const bubbleThinking = transitionState === 'loading' || transitionState === 'exploding'
 
-  const moreMenuItems = canEdit
-    ? [
-        {
-          key: 'rename',
-          label: '重命名',
-          icon: <EditOutlined />,
-          onClick: () => {
-            setRenameValue(selectedDashboard?.name ?? '')
-            setShowRename(true)
-          },
-        },
-        { type: 'divider' as const },
-        {
-          key: 'delete',
-          label: '删除看板',
-          icon: <DeleteOutlined />,
-          danger: true,
-          onClick: handleDeleteDashboard,
-        },
-      ]
-    : []
+  const actionBtnStyle: React.CSSProperties = {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    background: 'rgba(26,29,46,0.6)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    border: '1px solid rgba(162,155,254,0.08)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: 'opacity 0.2s, background 0.2s',
+    color: '#9CA3B4',
+    fontSize: 14,
+  }
+
+  // Suppress unused variable warning for showDashboardDropdown
+  void showDashboardDropdown
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'transparent' }}>
+    <div
+      style={{
+        position: 'relative',
+        height: '100vh',
+        overflow: 'hidden',
+        background: 'transparent',
+      }}
+      onMouseEnter={() => setPageHovered(true)}
+      onMouseLeave={() => setPageHovered(false)}
+    >
+      {/* Inject keyframe styles */}
+      <style>{INJECTED_STYLES}</style>
 
-      {/* ── Header Row 1 ── */}
+      {/* ── Top floating bar ── */}
       <div
         style={{
-          background:         'var(--bg-glass)',
-          backdropFilter:     'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          borderBottom:       `1px solid var(--bg-glass-border)`,
-          padding:            '0 24px',
-          height:             60,
-          display:            'flex',
-          alignItems:         'center',
-          gap:                12,
-          flexShrink:         0,
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 10,
+          pointerEvents: 'none',
+          background: 'linear-gradient(180deg, rgba(8,10,18,0.85) 0%, transparent 100%)',
+          height: 72,
         }}
       >
-        <BarChartOutlined style={{ color: '#6C5CE7', fontSize: 18 }} />
-        <Text style={{ fontSize: 16, fontWeight: 500, color: 'var(--text-primary)' }}>数据看板</Text>
-        <div style={{ width: 1, height: 20, background: 'var(--border-color)' }} />
-
-        {/* OptGroup selector */}
-        <Select
-          style={{ width: 280 }}
-          placeholder="选择看板"
-          value={selectedDashboard?.id}
-          onChange={loadDashboard}
-          notFoundContent={<span style={{ fontSize: 12, color: '#9CA3B4' }}>暂无看板</span>}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            height: 52,
+            padding: '0 16px',
+          }}
         >
-          {(['fixed', 'auto', 'personal'] as const).map((type) => {
-            const group =
-              type === 'fixed' ? fixedDashboards : type === 'auto' ? autoDashboards : personalDashboards
-            if (!group.length) return null
-            const tl = TYPE_LABEL[type]
-            return (
-              <Select.OptGroup key={type} label={GROUP_LABEL[type]}>
-                {group.map((d) => (
-                  <Select.Option key={d.id} value={d.id}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Tag
-                        style={{
-                          fontSize: 10,
-                          padding: '0 5px',
-                          borderRadius: 6,
-                          background: `${tl.color}18`,
-                          color: tl.color,
-                          border: 'none',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {tl.label}
-                      </Tag>
-                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {d.name}
-                      </span>
-                      <span style={{ fontSize: 11, color: '#C4CBD6', flexShrink: 0 }}>
-                        {d.widget_count}
-                      </span>
-                    </div>
-                  </Select.Option>
-                ))}
-              </Select.OptGroup>
-            )
-          })}
-        </Select>
-
-        {/* Rename / delete dropdown */}
-        {selectedDashboard && moreMenuItems.length > 0 && (
-          <Dropdown menu={{ items: moreMenuItems }} trigger={['click']}>
-            <Button type="text" icon={<EllipsisOutlined />} style={{ color: '#9CA3B4' }} />
-          </Dropdown>
-        )}
-
-        {/* Right actions */}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => selectedDashboard && runWidgetQueries(selectedDashboard, appliedFilters)}
-            loading={loading}
-          >
-            刷新
-          </Button>
-
-          {canEdit && (
-            editMode ? (
-              <Button
-                type="primary"
-                icon={<EditOutlined />}
-                onClick={() => setEditMode(false)}
-                style={{ background: '#6C5CE7', border: 'none' }}
-              >
-                完成编辑
-              </Button>
-            ) : (
-              <Button icon={<EditOutlined />} onClick={() => setEditMode(true)}>
-                编辑
-              </Button>
-            )
-          )}
-
-          {editMode && (
-            <Button
-              icon={<PlusOutlined />}
-              type="dashed"
-              onClick={() => setShowAddChart(true)}
-              style={{ borderColor: '#6C5CE7', color: '#6C5CE7' }}
-            >
-              添加图表
-            </Button>
-          )}
-
-          <Button icon={<PlusOutlined />} onClick={() => setShowCreate(true)}>
-            新建
-          </Button>
-
-          {isAdmin && (
-            <Select
-              style={{ width: 200 }}
-              placeholder="🚀 为数据集生成"
-              loading={generating}
-              value={null}
-              onChange={handleAutoGenerate}
-              options={datasets.map((d) => ({ value: d.id, label: d.name }))}
+          {/* Left: status dot + dashboard selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, pointerEvents: 'auto' }}>
+            <div
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: '#00C48C',
+                animation: 'live-pulse 2s ease-in-out infinite',
+                flexShrink: 0,
+              }}
             />
+            <DashboardSelector
+              selectedDashboard={selectedDashboard}
+              dashboards={dashboards}
+              onSelect={loadDashboard}
+              isDark={isDark}
+            />
+          </div>
+
+          {/* Edit mode indicator badge */}
+          {editMode && (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: '#FFB946',
+                background: 'rgba(255,185,70,0.12)',
+                borderRadius: 8,
+                padding: '2px 8px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                pointerEvents: 'none',
+              }}
+            >
+              编辑中
+            </span>
           )}
+
+          {/* Right action buttons */}
+          <div
+            style={{
+              marginLeft: 'auto',
+              display: 'flex',
+              gap: 6,
+              alignItems: 'center',
+              pointerEvents: 'auto',
+              opacity: pageHovered ? 1 : 0,
+              transition: 'opacity 0.3s',
+            }}
+          >
+            {dashboardFilters.length > 0 && (
+              <Tooltip title="筛选">
+                <div
+                  style={{
+                    ...actionBtnStyle,
+                    background: showFilterDrawer ? 'rgba(108,92,231,0.25)' : 'rgba(26,29,46,0.6)',
+                    color: showFilterDrawer ? '#A29BFE' : '#9CA3B4',
+                  }}
+                  onClick={() => setShowFilterDrawer((v) => !v)}
+                >
+                  <FilterOutlined />
+                </div>
+              </Tooltip>
+            )}
+
+            {canEdit && (
+              <Tooltip title={editMode ? '完成编辑' : '编辑'}>
+                <div
+                  style={{
+                    ...actionBtnStyle,
+                    background: editMode ? 'rgba(108,92,231,0.25)' : 'rgba(26,29,46,0.6)',
+                    color: editMode ? '#A29BFE' : '#9CA3B4',
+                  }}
+                  onClick={() => setEditMode((v) => !v)}
+                >
+                  <EditOutlined />
+                </div>
+              </Tooltip>
+            )}
+
+            <Tooltip title="刷新">
+              <div
+                style={actionBtnStyle}
+                onClick={() => selectedDashboard && runWidgetQueries(selectedDashboard, appliedFilters)}
+              >
+                <ReloadOutlined style={{ animation: loading ? 'db-ball 1s linear infinite' : 'none' }} />
+              </div>
+            </Tooltip>
+
+            <Tooltip title="新建看板">
+              <div
+                style={actionBtnStyle}
+                onClick={() => setShowCreate(true)}
+              >
+                <PlusOutlined />
+              </div>
+            </Tooltip>
+
+            {canEdit && editMode && (
+              <Tooltip title="添加图表">
+                <div
+                  style={{ ...actionBtnStyle, color: '#A29BFE' }}
+                  onClick={() => setShowAddChart(true)}
+                >
+                  <ExpandOutlined />
+                </div>
+              </Tooltip>
+            )}
+
+            {canEdit && (
+              <>
+                <Tooltip title="重命名">
+                  <div
+                    style={actionBtnStyle}
+                    onClick={() => {
+                      setRenameValue(selectedDashboard?.name ?? '')
+                      setShowRename(true)
+                    }}
+                  >
+                    <EditOutlined style={{ fontSize: 12 }} />
+                  </div>
+                </Tooltip>
+                <Tooltip title="删除看板">
+                  <div
+                    style={{ ...actionBtnStyle, color: '#ff6b6b' }}
+                    onClick={handleDeleteDashboard}
+                  >
+                    <DeleteOutlined style={{ fontSize: 12 }} />
+                  </div>
+                </Tooltip>
+              </>
+            )}
+
+            {isAdmin && (
+              <Select
+                style={{ width: 180 }}
+                placeholder="为数据集生成看板"
+                loading={generating}
+                value={null}
+                onChange={handleAutoGenerate}
+                options={datasets.map((d) => ({ value: d.id, label: d.name }))}
+                size="small"
+              />
+            )}
+          </div>
         </div>
       </div>
 
-      {/* ── Header Row 2: Filter Bar ── */}
+      {/* ── Filter Drawer ── */}
       {selectedDashboard && dashboardFilters.length > 0 && (
-        <FilterBar
+        <FilterDrawer
+          open={showFilterDrawer}
+          onClose={() => setShowFilterDrawer(false)}
           filters={dashboardFilters}
           datasetId={selectedDashboard.dataset_id}
           values={pendingFilters}
@@ -1001,59 +1873,100 @@ export default function DashboardPage() {
             setAppliedFilters(pendingFilters)
             runWidgetQueries(selectedDashboard, pendingFilters)
           }}
+          isDark={isDark}
         />
       )}
 
-      {/* ── Content ── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 24, paddingBottom: 96 }}>
-
+      {/* ── Scrollable content area ── */}
+      <div
+        style={{
+          height: '100%',
+          overflowY: 'auto',
+          padding: '16px 20px',
+          paddingTop: 56,
+          paddingBottom: 80,
+          boxSizing: 'border-box',
+        }}
+      >
         {/* No dashboards at all */}
         {!selectedDashboard && !loading && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 80 }}>
-            <Empty
-              description={
-                isAdmin
-                  ? '暂无看板，点击"新建"创建，或在右上角选择数据集自动生成'
-                  : '暂无看板，点击"新建"创建个人看板'
-              }
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '70%',
+            }}
+          >
+            <div
+              style={{
+                borderRadius: 20,
+                background: isDark ? 'rgba(26,29,46,0.4)' : 'rgba(255,255,255,0.65)',
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+                border: '1px solid rgba(162,155,254,0.08)',
+                padding: '48px 56px',
+                textAlign: 'center',
+              }}
             >
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowCreate(true)}
-                style={{ background: '#6C5CE7', border: 'none' }}>
+              <div style={{ fontSize: 13, color: '#5F6B7A', marginBottom: 20 }}>
+                {isAdmin
+                  ? '暂无看板，点击"新建"创建，或在右上角选择数据集自动生成'
+                  : '暂无看板，点击"新建"创建个人看板'}
+              </div>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setShowCreate(true)}
+                style={{ background: 'linear-gradient(135deg, #6C5CE7, #A29BFE)', border: 'none', borderRadius: 10 }}
+              >
                 新建看板
               </Button>
-            </Empty>
+            </div>
           </div>
         )}
 
         {selectedDashboard && (
           <>
-            {/* Dashboard title + filter indicator */}
-            <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Title level={5} style={{ margin: 0, color: '#5F6B7A', fontWeight: 500 }}>
-                {selectedDashboard.config.title}
-              </Title>
-              {Object.values(appliedFilters).some(Boolean) && (
-                <span style={{ fontSize: 11, color: '#6C5CE7', background: '#F0EEFF', borderRadius: 10, padding: '2px 10px' }}>
+            {/* Applied filter indicator */}
+            {Object.values(appliedFilters).some(Boolean) && (
+              <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, color: '#A29BFE', background: 'rgba(108,92,231,0.12)', borderRadius: 10, padding: '2px 10px' }}>
                   已筛选
                 </span>
-              )}
-              {editMode && (
-                <span style={{ fontSize: 11, color: '#FFB946', background: '#FFF8EC', borderRadius: 10, padding: '2px 10px' }}>
-                  编辑模式
-                </span>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Empty dashboard state */}
             {isEmptyDashboard ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 60 }}>
-                <Empty description="此看板暂无图表">
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '60%',
+                }}
+              >
+                <div
+                  style={{
+                    borderRadius: 20,
+                    background: isDark ? 'rgba(26,29,46,0.4)' : 'rgba(255,255,255,0.65)',
+                    backdropFilter: 'blur(16px)',
+                    WebkitBackdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(162,155,254,0.08)',
+                    padding: '48px 56px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontSize: 13, color: '#5F6B7A', marginBottom: 20 }}>此看板暂无图表</div>
                   <Space>
                     <Button
                       type="primary"
                       icon={<PlusOutlined />}
                       onClick={() => { setEditMode(true); setShowAddChart(true) }}
-                      style={{ background: '#6C5CE7', border: 'none' }}
+                      style={{ background: 'linear-gradient(135deg, #6C5CE7, #A29BFE)', border: 'none', borderRadius: 10 }}
                     >
                       从对话历史添加
                     </Button>
@@ -1062,12 +1975,13 @@ export default function DashboardPage() {
                         icon={<ReloadOutlined />}
                         onClick={() => handleAutoGenerate(selectedDashboard.dataset_id)}
                         loading={generating}
+                        style={{ borderRadius: 10 }}
                       >
                         自动生成图表
                       </Button>
                     )}
                   </Space>
-                </Empty>
+                </div>
               </div>
             ) : (
               <>
@@ -1085,7 +1999,7 @@ export default function DashboardPage() {
                         gridTemplateColumns: isKpiRow
                           ? 'repeat(auto-fit, minmax(180px, 1fr))'
                           : rowWidgets.map((w) => `${w.position.width}fr`).join(' '),
-                        gap: 16,
+                        gap: isKpiRow ? 12 : 16,
                         marginBottom: 16,
                         ...(transitionState === 'collapsing' ? {
                           animation: `card-fly-out 0.5s cubic-bezier(0.55,0,1,0.8) ${rowIdx * 80}ms both`,
@@ -1102,12 +2016,26 @@ export default function DashboardPage() {
                     >
                       {rowWidgets.map((widget) =>
                         widget.type === 'kpi' ? (
-                          <KpiCard key={widget.id} widget={widget} result={widgetResults[widget.id]} />
+                          <KpiCard key={widget.id} widget={widget} result={widgetResults[widget.id]} isDark={isDark} />
+                        ) : widget.chart_type === 'bar_horizontal' && (widgetResults[widget.id]?.rows?.length ?? 0) > 3 ? (
+                          <RankingCard
+                            key={widget.id}
+                            widget={widget}
+                            result={widgetResults[widget.id]}
+                            isDark={isDark}
+                            canEdit={canEdit && editMode}
+                            isFirstRow={isFirstRow}
+                            isLastRow={isLastRow}
+                            onRemove={() => handleRemoveWidget(widget.id)}
+                            onMoveUp={() => handleMoveRow(rowKey, 'up')}
+                            onMoveDown={() => handleMoveRow(rowKey, 'down')}
+                          />
                         ) : (
                           <ChartCard
                             key={widget.id}
                             widget={widget}
                             result={widgetResults[widget.id]}
+                            isDark={isDark}
                             canEdit={canEdit && editMode}
                             isFirstRow={isFirstRow}
                             isLastRow={isLastRow}
@@ -1123,18 +2051,12 @@ export default function DashboardPage() {
 
                 {/* Edit mode: add chart button at bottom */}
                 {editMode && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'center',
-                      marginTop: 8,
-                    }}
-                  >
+                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
                     <Button
                       type="dashed"
                       icon={<PlusOutlined />}
                       onClick={() => setShowAddChart(true)}
-                      style={{ borderColor: '#D9D5FE', color: '#6C5CE7', width: 200 }}
+                      style={{ borderColor: 'rgba(162,155,254,0.3)', color: '#A29BFE', width: 200, borderRadius: 10 }}
                     >
                       添加图表
                     </Button>
@@ -1146,61 +2068,16 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* ── Floating input bar ── */}
-      <div
-        className="floating-input-bar"
-        style={{
-          pointerEvents: selectedDashboard ? 'auto' : 'none',
-          opacity:       selectedDashboard ? 1 : 0,
-        }}
-      >
-        {/* Dataset tag */}
-        {selectedDashboard && (() => {
-          const ds = datasets.find(d => d.id === selectedDashboard.dataset_id)
-          return ds ? (
-            <span style={{
-              fontSize:     11,
-              fontWeight:   500,
-              color:        'var(--primary-500)',
-              background:   'var(--primary-50)',
-              borderRadius: 8,
-              padding:      '2px 8px',
-              whiteSpace:   'nowrap',
-              flexShrink:   0,
-            }}>
-              {ds.name}
-            </span>
-          ) : null
-        })()}
+      {/* ── LiveTimestamp ── */}
+      <LiveTimestamp lastUpdated={lastUpdated} isDark={isDark} />
 
-        <MessageOutlined style={{ color: 'var(--text-tertiary)', fontSize: 15, flexShrink: 0 }} />
-        <input
-          ref={quickInputRef}
-          value={quickQuery}
-          onChange={(e) => setQuickQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submitQuickQuery(quickQuery)
-          }}
-          placeholder="向 AI 提问数据… Enter 发送，⌘K 聚焦"
-          style={{
-            flex:       1,
-            border:     'none',
-            background: 'transparent',
-            outline:    'none',
-            fontSize:   14,
-            color:      'var(--text-primary)',
-            fontFamily: 'inherit',
-          }}
-        />
-        <Button
-          type="primary"
-          size="small"
-          icon={<SendOutlined />}
-          disabled={!quickQuery.trim()}
-          onClick={() => submitQuickQuery(quickQuery)}
-          style={{ background: '#6C5CE7', border: 'none', borderRadius: 10, flexShrink: 0 }}
-        />
-      </div>
+      {/* ── AiBubble ── */}
+      <AiBubble
+        onSubmit={submitQuickQuery}
+        disabled={!selectedDashboard}
+        bubbleThinking={bubbleThinking}
+        quickInputRef={quickInputRef}
+      />
 
       {/* ── Modals ── */}
       <CreateDashboardModal
