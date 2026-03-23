@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # Uploads
     upload_dir: str = "uploads"
 
+    # Encryption (for API keys stored in DB)
+    # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    encryption_key: str = "kQ5zefzrflDUQSGiOhvGtKC2-gUMe8G7WtJdr7NuySA="
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",")]

@@ -59,6 +59,7 @@ async def ask(
             schema=schema,
             role=current_user.role,
             scope_desc=current_user.scope_desc,
+            db=db,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -107,6 +108,7 @@ async def ask(
                 role=current_user.role,
                 scope_desc=current_user.scope_desc,
                 error_context=str(first_err),
+                db=db,
             )
             safety = check_sql_safety(generated.sql, allowed_tables=[table_name])
             if not safety.safe:

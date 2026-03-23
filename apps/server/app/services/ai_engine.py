@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import re
-from typing import List
+from typing import List, Optional
 
-from openai import AsyncOpenAI
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.schemas.dataset import DatasetSchema
@@ -13,9 +14,7 @@ from app.schemas.query import GeneratedSQL
 # ── Prompt builders ───────────────────────────────────────────────────────────
 
 def _build_schema_block(table_name: str, schema: DatasetSchema) -> str:
-    """Format dataset schema into a concise SQL-friendly description."""
-    lines = [f"Table: {table_name}"]
-    lines.append("Columns:")
+    lines = [f"Table: {table_name}", "Columns:"]
     for col in schema.columns:
         extras: List[str] = []
         if col.sample_values:
@@ -68,12 +67,7 @@ _SYSTEM_PROMPT_TEMPLATE = """\
 """
 
 
-def build_system_prompt(
-    table_name: str,
-    schema: DatasetSchema,
-    role: str,
-    scope_desc: str,
-) -> str:
+def build_system_prompt(table_name: str, schema: DatasetSchema, role: str, scope_desc: str) -> str:
     return _SYSTEM_PROMPT_TEMPLATE.format(
         schema_block=_build_schema_block(table_name, schema),
         role=role,
@@ -82,23 +76,9 @@ def build_system_prompt(
     )
 
 
-# ── OpenAI-compatible client (Kimi / any provider) ────────────────────────────
-
-_client: AsyncOpenAI | None = None
-
-
-def _get_client() -> AsyncOpenAI:
-    global _client
-    if _client is None:
-        _client = AsyncOpenAI(
-            api_key=settings.ai_api_key or settings.anthropic_api_key,
-            base_url=settings.ai_base_url or None,
-        )
-    return _client
-
+# ── JSON extraction ───────────────────────────────────────────────────────────
 
 def _extract_json(text: str) -> dict:
-    """Extract JSON from model response, stripping any accidental markdown."""
     text = text.strip()
     fence_match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
     if fence_match:
@@ -109,21 +89,174 @@ def _extract_json(text: str) -> dict:
     return json.loads(text)
 
 
+# ── Dynamic client resolution ─────────────────────────────────────────────────
+
+async def _get_routing(task_type: str, db: AsyncSession):
+    """Load routing + provider from DB. Returns (provider, routing) or (None, None)."""
+    from app.models.platform import AIProvider, AITaskRouting
+
+    r_result = await db.execute(
+        select(AITaskRouting).where(
+            AITaskRouting.task_type == task_type,
+            AITaskRouting.is_active == True,  # noqa: E712
+        )
+    )
+    routing = r_result.scalar_one_or_none()
+    if routing is None or not routing.primary_provider_id:
+        return None, None
+
+    p_result = await db.execute(
+        select(AIProvider).where(
+            AIProvider.id == routing.primary_provider_id,
+            AIProvider.is_active == True,  # noqa: E712
+        )
+    )
+    provider = p_result.scalar_one_or_none()
+    return provider, routing
+
+
+async def _get_fallback(routing, db: AsyncSession):
+    """Load fallback provider for a routing row."""
+    if routing is None or not routing.fallback_provider_id:
+        return None
+    from app.models.platform import AIProvider
+    p_result = await db.execute(
+        select(AIProvider).where(
+            AIProvider.id == routing.fallback_provider_id,
+            AIProvider.is_active == True,  # noqa: E712
+        )
+    )
+    return p_result.scalar_one_or_none()
+
+
+async def _call_openai_compatible(
+    api_key: str,
+    base_url: str,
+    model: str,
+    messages: list[dict],
+    temperature: float = 0.1,
+    max_tokens: int = 2000,
+) -> str:
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    response = await client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    return response.choices[0].message.content or ""
+
+
+async def _call_anthropic(
+    api_key: str,
+    model: str,
+    system: str,
+    user_content: str,
+    temperature: float = 0.1,
+    max_tokens: int = 2000,
+) -> str:
+    from anthropic import AsyncAnthropic
+    client = AsyncAnthropic(api_key=api_key)
+    response = await client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        system=system,
+        messages=[{"role": "user", "content": user_content}],
+        temperature=temperature,
+    )
+    return response.content[0].text
+
+
+async def _invoke(
+    provider,
+    routing,
+    system_prompt: str,
+    user_content: str,
+) -> str:
+    """Dispatch to the right SDK based on provider_type."""
+    from app.services.crypto import decrypt_api_key
+    api_key = decrypt_api_key(provider.api_key_encrypted)
+    model = routing.primary_model
+    temperature = routing.temperature
+    max_tokens = routing.max_tokens
+
+    if provider.provider_type == "anthropic":
+        return await _call_anthropic(api_key, model, system_prompt, user_content, temperature, max_tokens)
+    else:  # openai_compatible
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ]
+        return await _call_openai_compatible(api_key, provider.base_url, model, messages, temperature, max_tokens)
+
+
+async def _invoke_fallback(
+    fallback_provider,
+    routing,
+    system_prompt: str,
+    user_content: str,
+) -> str:
+    from app.services.crypto import decrypt_api_key
+    api_key = decrypt_api_key(fallback_provider.api_key_encrypted)
+    model = routing.fallback_model or ""
+    temperature = routing.temperature
+    max_tokens = routing.max_tokens
+
+    if fallback_provider.provider_type == "anthropic":
+        return await _call_anthropic(api_key, model, system_prompt, user_content, temperature, max_tokens)
+    else:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ]
+        return await _call_openai_compatible(api_key, fallback_provider.base_url, model, messages, temperature, max_tokens)
+
+
+# ── Fallback to env-var config ────────────────────────────────────────────────
+
+_env_client = None
+
+
+def _get_env_client():
+    global _env_client
+    if _env_client is None:
+        from openai import AsyncOpenAI
+        _env_client = AsyncOpenAI(
+            api_key=settings.ai_api_key or settings.anthropic_api_key,
+            base_url=settings.ai_base_url or None,
+        )
+    return _env_client
+
+
+async def _call_env_provider(system_prompt: str, user_content: str) -> str:
+    client = _get_env_client()
+    response = await client.chat.completions.create(
+        model=settings.ai_model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+    )
+    return response.choices[0].message.content or ""
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
 async def generate_sql(
     question: str,
     table_name: str,
     schema: DatasetSchema,
     role: str = "admin",
     scope_desc: str = "所有数据",
-    error_context: str | None = None,
+    error_context: Optional[str] = None,
+    db: Optional[AsyncSession] = None,
 ) -> GeneratedSQL:
     """
-    Call Kimi (OpenAI-compatible) API to generate SQL from a natural language question.
-    Pass error_context to ask the AI to fix a previously failed SQL.
-    Returns GeneratedSQL with sql, explanation, chart_type.
+    Generate SQL from natural language.
+    Uses DB-driven routing when db is provided; falls back to env-var config.
     """
     system_prompt = build_system_prompt(table_name, schema, role, scope_desc)
-    client = _get_client()
 
     user_content = question
     if error_context:
@@ -133,35 +266,19 @@ async def generate_sql(
             f"请修正 SQL，确保语法正确并只使用表中已有的列名。"
         )
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_content},
-    ]
+    raw = await _generate_raw(system_prompt, user_content, db)
 
-    response = await client.chat.completions.create(
-        model=settings.ai_model,
-        messages=messages,
-    )
-    raw = response.choices[0].message.content or ""
-
+    # Parse response, retry once if JSON extraction fails
     try:
         parsed = _extract_json(raw)
     except (json.JSONDecodeError, IndexError):
-        # Retry once asking for pure JSON
-        messages.append({"role": "assistant", "content": raw})
-        messages.append({
-            "role": "user",
-            "content": "请只返回纯 JSON，不要包含任何 markdown 标记或额外文字",
-        })
-        retry = await client.chat.completions.create(
-            model=settings.ai_model,
-            messages=messages,
-        )
-        raw = retry.choices[0].message.content or ""
+        retry_content = "请只返回纯 JSON，不要包含任何 markdown 标记或额外文字"
+        retry_raw = await _generate_raw(system_prompt, retry_content, db,
+                                        prior_assistant=raw, prior_user=user_content)
         try:
-            parsed = _extract_json(raw)
+            parsed = _extract_json(retry_raw)
         except (json.JSONDecodeError, IndexError) as exc:
-            raise ValueError(f"AI returned non-JSON response: {raw[:300]}") from exc
+            raise ValueError(f"AI returned non-JSON response: {retry_raw[:300]}") from exc
 
     sql = parsed.get("sql", "").strip()
     explanation = parsed.get("explanation", "").strip()
@@ -170,7 +287,53 @@ async def generate_sql(
     if not sql:
         raise ValueError(f"AI did not return a SQL field. Raw: {raw[:300]}")
 
-    if chart_type not in {"bar", "line", "pie", "table"}:
+    if chart_type not in {"bar", "line", "pie", "table", "bar_horizontal"}:
         chart_type = "table"
 
     return GeneratedSQL(sql=sql, explanation=explanation, chart_type=chart_type)
+
+
+async def _generate_raw(
+    system_prompt: str,
+    user_content: str,
+    db: Optional[AsyncSession],
+    prior_assistant: Optional[str] = None,
+    prior_user: Optional[str] = None,
+) -> str:
+    """Call AI with optional DB-driven routing and fallback."""
+    provider, routing = (None, None)
+    if db is not None:
+        try:
+            provider, routing = await _get_routing("nl2sql", db)
+        except Exception:
+            pass
+
+    # DB routing available — try primary, then fallback
+    if provider is not None and routing is not None:
+        # Build messages with optional prior turn for retry
+        effective_user = user_content
+        if prior_assistant and prior_user:
+            # Simulate a multi-turn by appending the correction
+            effective_user = (
+                f"{prior_user}\n\n[上次回复]\n{prior_assistant}\n\n{user_content}"
+            )
+        try:
+            return await _invoke(provider, routing, system_prompt, effective_user)
+        except Exception as primary_err:
+            fallback_provider = await _get_fallback(routing, db)
+            if fallback_provider is not None:
+                try:
+                    return await _invoke_fallback(fallback_provider, routing, system_prompt, effective_user)
+                except Exception as fallback_err:
+                    raise ValueError(
+                        f"Primary error: {primary_err}; Fallback error: {fallback_err}"
+                    ) from fallback_err
+            raise
+
+    # No DB routing — use env-var config
+    effective_user = user_content
+    if prior_assistant and prior_user:
+        effective_user = (
+            f"{prior_user}\n\n[上次回复]\n{prior_assistant}\n\n{user_content}"
+        )
+    return await _call_env_provider(system_prompt, effective_user)

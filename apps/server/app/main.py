@@ -73,8 +73,9 @@ app.add_middleware(
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-from app.api import admin, auth, dashboards, datasets, health, query  # noqa: E402  (import after app creation)
+from app.api import admin, ai_admin, auth, config, dashboards, datasets, health, query  # noqa: E402
 from app.models import dashboard as _dashboard_model  # noqa: F401  ensure model is registered
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
@@ -82,3 +83,9 @@ app.include_router(datasets.router, prefix="/api/v1")
 app.include_router(query.router, prefix="/api/v1")
 app.include_router(dashboards.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(config.router, prefix="/api/v1")
+app.include_router(ai_admin.router, prefix="/api/v1")
+
+# Serve uploaded branding assets (logos, favicons)
+os.makedirs(settings.upload_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
