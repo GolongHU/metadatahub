@@ -10,7 +10,7 @@ from pydantic import BaseModel
 class DashboardListItem(BaseModel):
     id: uuid.UUID
     name: str
-    dataset_id: uuid.UUID
+    dataset_id: Optional[uuid.UUID] = None
     dataset_name: str = ""
     dashboard_type: str = "auto"
     is_pinned: bool = False
@@ -23,7 +23,7 @@ class DashboardListItem(BaseModel):
 class DashboardDetail(BaseModel):
     id: uuid.UUID
     name: str
-    dataset_id: uuid.UUID
+    dataset_id: Optional[uuid.UUID] = None
     config: Dict[str, Any]
     dashboard_type: str = "auto"
     owner_id: Optional[uuid.UUID] = None
@@ -41,7 +41,7 @@ class AutoGenerateRequest(BaseModel):
 
 class CreateDashboardRequest(BaseModel):
     name: str
-    dataset_id: uuid.UUID
+    dataset_id: Optional[uuid.UUID] = None
     config: Optional[Dict[str, Any]] = None
 
 

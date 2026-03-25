@@ -7,7 +7,7 @@ from functools import partial
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -106,10 +106,29 @@ async def _run_widget_query(
     table_name: str,
     filters: dict[str, str],
     user: AuthenticatedUser,
-    dataset_id: uuid.UUID,
+    dataset_id: Optional[uuid.UUID],
     db: AsyncSession,
 ) -> tuple[str, WidgetResult]:
     try:
+        if dataset_id is None:
+            # PostgreSQL path: system dashboards query PG tables directly
+            import time
+            t0 = time.time()
+            pg_result = await db.execute(text(raw_query))
+            columns = list(pg_result.keys())
+            rows_out = []
+            for row in pg_result.fetchall()[:500]:
+                rows_out.append([
+                    float(v) if hasattr(v, '__float__') and not isinstance(v, (int, float, str, bool, type(None))) else v
+                    for v in row
+                ])
+            return widget_id, WidgetResult(
+                columns=columns,
+                rows=rows_out,
+                row_count=len(rows_out),
+                execution_time_ms=(time.time() - t0) * 1000,
+            )
+
         filtered_table = _build_filtered_table(table_name, filters)
         sql = raw_query.replace("{table}", filtered_table)
 
@@ -170,7 +189,7 @@ async def list_dashboards(
     dashboards = result.scalars().all()
 
     # Load dataset names in one query
-    dataset_ids = {d.dataset_id for d in dashboards}
+    dataset_ids = {d.dataset_id for d in dashboards if d.dataset_id is not None}
     dataset_names: dict[uuid.UUID, str] = {}
     if dataset_ids:
         ds_result = await db.execute(
@@ -184,7 +203,7 @@ async def list_dashboards(
             id=d.id,
             name=d.name,
             dataset_id=d.dataset_id,
-            dataset_name=dataset_names.get(d.dataset_id, ""),
+            dataset_name=dataset_names.get(d.dataset_id, "") if d.dataset_id else "",
             dashboard_type=d.dashboard_type,
             is_pinned=d.is_pinned,
             widget_count=len(d.config.get("widgets", [])),
@@ -254,10 +273,10 @@ async def create_dashboard(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> DashboardDetail:
     user_id = current_user.user_id if isinstance(current_user.user_id, uuid.UUID) else uuid.UUID(str(current_user.user_id))
-    table_name = f"dataset_{body.dataset_id.hex}"
+    table_name = f"dataset_{body.dataset_id.hex}" if body.dataset_id else ""
     config = body.config or {
         "title": body.name,
-        "dataset_id": str(body.dataset_id),
+        "dataset_id": str(body.dataset_id) if body.dataset_id else None,
         "table_name": table_name,
         "filters": [],
         "widgets": [],
