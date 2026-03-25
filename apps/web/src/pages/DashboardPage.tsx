@@ -1298,7 +1298,7 @@ function AddChartModal({
     setPreviewLoading(true)
     setPreviewResult(null)
     try {
-      const res = await queryApi.preview({ dataset_id: dashboard.dataset_id, sql: customSql })
+      const res = await queryApi.preview({ dataset_id: dashboard.dataset_id ?? '', sql: customSql })
       setPreviewResult(res.data)
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'SQL 执行失败'
@@ -1313,7 +1313,7 @@ function AddChartModal({
     setAdding('custom')
     try {
       // Normalize SQL: replace concrete table name with {table} if present
-      const tablePrefix = `dataset_${dashboard.dataset_id.replace(/-/g, '')}`
+      const tablePrefix = `dataset_${(dashboard.dataset_id ?? '').replace(/-/g, '')}`
       const sqlWithPlaceholder = customSql.replace(tablePrefix, '{table}')
       await dashboardApi.addWidget(dashboard.id, {
         type: 'chart',
@@ -1517,7 +1517,7 @@ export default function DashboardPage() {
 
   const submitQuickQuery = (q: string) => {
     if (!q.trim() || !selectedDashboard) return
-    const datasetId = selectedDashboard.dataset_id
+    const datasetId = selectedDashboard.dataset_id ?? ''
     startTransition(q, datasetId)
 
     // t=600ms: card fly-out done → show Möbius loader
@@ -1536,7 +1536,7 @@ export default function DashboardPage() {
             columns:    qd.columns,
             rows:       qd.rows,
             sql,
-            dataset_id: datasetId,
+            dataset_id: datasetId as string,
           })
           // +150ms: chart blur-to-clear reveal (faster after explode)
           setTimeout(() => {
@@ -1923,7 +1923,7 @@ export default function DashboardPage() {
           open={showFilterDrawer}
           onClose={() => setShowFilterDrawer(false)}
           filters={dashboardFilters}
-          datasetId={selectedDashboard.dataset_id}
+          datasetId={selectedDashboard.dataset_id ?? ''}
           values={pendingFilters}
           onChange={(field, val) => setPendingFilters((prev) => ({ ...prev, [field]: val }))}
           onApply={() => {
@@ -2033,7 +2033,7 @@ export default function DashboardPage() {
                     {isAdmin && (
                       <Button
                         icon={<ReloadOutlined />}
-                        onClick={() => handleAutoGenerate(selectedDashboard.dataset_id)}
+                        onClick={() => handleAutoGenerate(selectedDashboard.dataset_id ?? '')}
                         loading={generating}
                         style={{ borderRadius: 10 }}
                       >

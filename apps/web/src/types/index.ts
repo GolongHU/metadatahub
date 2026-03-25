@@ -215,7 +215,7 @@ export interface TaskRoutingOut extends TaskRoutingItem {
 export interface DashboardListItem {
   id: string
   name: string
-  dataset_id: string
+  dataset_id: string | null
   dataset_name: string
   dashboard_type: 'fixed' | 'auto' | 'personal'
   is_pinned: boolean
@@ -252,7 +252,7 @@ export interface DashboardConfig {
 export interface DashboardDetail {
   id: string
   name: string
-  dataset_id: string
+  dataset_id: string | null
   config: DashboardConfig
   dashboard_type: 'fixed' | 'auto' | 'personal'
   owner_id: string | null

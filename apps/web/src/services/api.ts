@@ -130,6 +130,10 @@ export const configApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  deleteLogo: (type: 'light' | 'dark') =>
+    api.delete(`/admin/config/branding/logo?type=${type}`),
+  deleteFavicon: () =>
+    api.delete('/admin/config/branding/favicon'),
 }
 
 export const aiAdminApi = {

@@ -1,4 +1,5 @@
 import {
+  AppstoreOutlined,
   DashboardOutlined,
   LockOutlined,
   MessageOutlined,
@@ -91,9 +92,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     {
       label: 'SETTINGS',
       items: [
-        { key: '/permissions', icon: <LockOutlined />,    label: '权限管理', enabled: isAdmin, visible: isAdmin },
-        { key: '/settings',    icon: <SettingOutlined />, label: '平台设置', enabled: isAdmin, visible: isAdmin },
-        { key: '/marketplace', icon: <ShopOutlined />,    label: '看板市场', enabled: false,   visible: true },
+        { key: '/permissions', icon: <LockOutlined />,      label: '权限管理', enabled: isAdmin, visible: isAdmin },
+        { key: '/templates',   icon: <AppstoreOutlined />,  label: '看板模板', enabled: isAdmin, visible: isAdmin },
+        { key: '/settings',    icon: <SettingOutlined />,   label: '平台设置', enabled: isAdmin, visible: isAdmin },
+        { key: '/marketplace', icon: <ShopOutlined />,      label: '看板市场', enabled: true,    visible: true },
       ],
     },
   ]

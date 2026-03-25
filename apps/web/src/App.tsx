@@ -6,8 +6,11 @@ import AppLayout from './components/AppLayout'
 import ChatPage from './pages/ChatPage'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
+import MarketplacePage from './pages/MarketplacePage'
 import PermissionPage from './pages/PermissionPage'
 import SettingsPage from './pages/SettingsPage'
+import TemplateEditor from './pages/TemplateEditor'
+import TemplatesPage from './pages/TemplatesPage'
 import UploadPage from './pages/UploadPage'
 import { authApi } from './services/api'
 import { useAuthStore } from './stores/authStore'
@@ -128,8 +131,11 @@ export default function App() {
         <Route path="/upload"      element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
         <Route path="/chat"        element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
         <Route path="/dashboard"   element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-        <Route path="/permissions" element={<ProtectedRoute adminOnly><PermissionPage /></ProtectedRoute>} />
-        <Route path="/settings"    element={<ProtectedRoute adminOnly><SettingsPage /></ProtectedRoute>} />
+        <Route path="/permissions"    element={<ProtectedRoute adminOnly><PermissionPage /></ProtectedRoute>} />
+        <Route path="/settings"       element={<ProtectedRoute adminOnly><SettingsPage /></ProtectedRoute>} />
+        <Route path="/templates"      element={<ProtectedRoute adminOnly><TemplatesPage /></ProtectedRoute>} />
+        <Route path="/templates/:id"  element={<ProtectedRoute adminOnly><TemplateEditor /></ProtectedRoute>} />
+        <Route path="/marketplace"    element={<ProtectedRoute><MarketplacePage /></ProtectedRoute>} />
         <Route path="/"  element={<Navigate to="/dashboard" replace />} />
         <Route path="*"  element={<Navigate to="/dashboard" replace />} />
       </Routes>
