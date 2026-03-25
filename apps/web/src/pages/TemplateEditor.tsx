@@ -95,8 +95,8 @@ function WidgetPreview({ type, isDark }: { type: string; isDark: boolean }) {
 
   if (type === 'kpi_card') {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 52, gap: 2 }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: isDark ? 'rgba(232,236,243,0.4)' : 'rgba(26,29,46,0.35)', lineHeight: 1 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 64, gap: 4 }}>
+        <div style={{ fontSize: 28, fontWeight: 700, color: isDark ? 'rgba(232,236,243,0.4)' : 'rgba(26,29,46,0.35)', lineHeight: 1 }}>
           45
         </div>
         <div style={{ fontSize: 9, color: isDark ? '#3D4256' : 'rgba(108,92,231,0.25)', letterSpacing: '0.03em' }}>
@@ -247,11 +247,11 @@ function CanvasWidget({ widget, index: _index, isSelected, isDark, onSelect, onM
         WebkitBackdropFilter: 'blur(8px)',
         border,
         boxShadow: shadow,
-        padding: '10px 10px 8px',
+        padding: '12px 12px 10px',
         position: 'relative',
         cursor: 'pointer',
         transition: 'border-color 0.15s, box-shadow 0.15s, background 0.15s',
-        minHeight: 80,
+        minHeight: 100,
       }}
     >
       {/* Header row */}
@@ -484,6 +484,7 @@ export default function TemplateEditor() {
         borderBottom: `1px solid ${panelBorder}`,
         padding: '0 16px',
         display: 'flex', alignItems: 'center', gap: 10,
+        flexWrap: 'nowrap', overflow: 'hidden',
       }}>
         {/* Back */}
         <button
@@ -522,7 +523,11 @@ export default function TemplateEditor() {
           onChange={setAssignedRoles}
           options={ROLE_OPTIONS}
           placeholder="分配角色"
-          style={{ width: 180 }}
+          maxTagCount={1}
+          maxTagTextLength={6}
+          maxTagPlaceholder={(omitted) => `+${omitted.length}`}
+          popupMatchSelectWidth={false}
+          style={{ width: 160, flexShrink: 0 }}
           size="small"
         />
 
@@ -560,7 +565,7 @@ export default function TemplateEditor() {
 
         {/* ── Left: Widget Palette ── */}
         <div style={{
-          width: 200, flexShrink: 0,
+          width: 220, flexShrink: 0,
           background: panelBg,
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
@@ -579,8 +584,8 @@ export default function TemplateEditor() {
                 key={item.id}
                 onClick={() => handleAddWidget(item)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '9px 14px', margin: '0 6px 2px',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 14px', margin: '0 6px 3px',
                   borderRadius: 10, cursor: 'pointer',
                   border: '1px solid transparent',
                   transition: 'all 0.15s',
@@ -598,18 +603,18 @@ export default function TemplateEditor() {
               >
                 {/* Icon block */}
                 <div style={{
-                  width: 30, height: 30, borderRadius: 8, background: wStyle.bg,
+                  width: 36, height: 36, borderRadius: 9, background: wStyle.bg,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}>
                   {WidgetIcons[item.id]?.(wStyle.color)}
                 </div>
                 {/* Text */}
                 <div style={{ overflow: 'hidden' }}>
-                  <div style={{ fontSize: 12, fontWeight: 500, color: isDark ? '#C8CDD8' : '#2D3142', lineHeight: 1.3 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: isDark ? '#C8CDD8' : '#2D3142', lineHeight: 1.3 }}>
                     {item.name}
                   </div>
                   {item.description && (
-                    <div style={{ fontSize: 10, color: '#5F6B7A', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 11, color: '#5F6B7A', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {item.description}
                     </div>
                   )}
@@ -620,11 +625,11 @@ export default function TemplateEditor() {
         </div>
 
         {/* ── Center: Canvas ── */}
-        <div style={{ flex: 1, overflowY: 'auto', background: canvasBg, padding: 16 }}>
+        <div style={{ flex: 1, overflowY: 'auto', background: canvasBg, padding: 20 }}>
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(6, 1fr)',
-            gap: 8,
+            gap: 10,
             minHeight: 300,
             alignContent: 'start',
           }}>
@@ -663,7 +668,7 @@ export default function TemplateEditor() {
 
         {/* ── Right: Properties Panel ── */}
         <div style={{
-          width: 240, flexShrink: 0,
+          width: 280, flexShrink: 0,
           background: panelBg,
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',

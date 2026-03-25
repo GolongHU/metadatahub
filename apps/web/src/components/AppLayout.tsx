@@ -37,6 +37,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const viewState            = useViewStore((s) => s.viewState)
   const isDashboardFullscreen = useViewStore((s) => s.isDashboardFullscreen)
+  const isEditorPage = /^\/templates\/.+/.test(location.pathname)
+  const hideSidebar = isDashboardFullscreen || isEditorPage
 
   const isDark = theme === 'dark'
   const role   = user?.role ?? ''
@@ -143,7 +145,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <TransitionOverlay />
 
       {/* ── Overlay when sidebar is expanded ── */}
-      {isExpanded && !isDashboardFullscreen && (
+      {isExpanded && !hideSidebar && (
         <div
           style={{
             position:   'fixed',
@@ -163,7 +165,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <div
         style={{
           position:   'fixed',
-          left:       isDashboardFullscreen ? -64 : 0,
+          left:       hideSidebar ? -64 : 0,
           top:        0,
           bottom:     0,
           width:      isExpanded ? 240 : 64,
@@ -445,7 +447,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       {/* ── Main content (always offset 64px) ── */}
       <div
         style={{
-          marginLeft: isDashboardFullscreen ? 0 : 64,
+          marginLeft: hideSidebar ? 0 : 64,
           minHeight:  '100vh',
           position:   'relative',
           zIndex:     1,
