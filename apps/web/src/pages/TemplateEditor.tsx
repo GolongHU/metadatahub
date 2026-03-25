@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Select, message, Spin, Switch } from 'antd'
 import { templateApi } from '../services/templateApi'
@@ -384,13 +385,14 @@ export default function TemplateEditor() {
   }, [id])
 
   const handleAddWidget = useCallback((item: WidgetLibraryItem) => {
+    const newId = crypto.randomUUID()
     setWidgets(prev => {
       const maxRow = prev.length > 0 ? Math.max(...prev.map(w => w.position.row)) : -1
       const defaultSpan: Record<string, number> = {
         kpi_card: 2, ranking_table: 6, bar_chart: 3, line_chart: 3, pie_chart: 2, radar_chart: 3,
       }
       const newWidget: WidgetConfig = {
-        id: crypto.randomUUID(),
+        id: newId,
         type: item.id,
         title: item.name,
         config: item.default_config ?? {},
@@ -398,6 +400,7 @@ export default function TemplateEditor() {
       }
       return [...prev, newWidget]
     })
+    setSelectedWidgetId(newId)
   }, [])
 
   const moveWidget = useCallback((index: number, direction: -1 | 1) => {
@@ -469,11 +472,11 @@ export default function TemplateEditor() {
     marginBottom: 12, boxSizing: 'border-box' as const,
   }
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
       background: isDark ? '#080A12' : '#F4F3FF',
-      zIndex: 300,
+      zIndex: 1000,
     }}>
       {/* ── Topbar ── */}
       <div style={{
@@ -803,6 +806,7 @@ export default function TemplateEditor() {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
