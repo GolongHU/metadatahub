@@ -1,4 +1,4 @@
-import { UploadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, UploadOutlined } from '@ant-design/icons'
 import { Button, Input, message, Upload } from 'antd'
 import { useEffect, useState } from 'react'
 import { configApi } from '../../services/api'
@@ -92,6 +92,29 @@ export default function BrandingTab() {
     return false
   }
 
+  async function handleLogoDelete(type: 'light' | 'dark') {
+    try {
+      await configApi.deleteLogo(type)
+      if (type === 'light') setLogoLightUrl(null)
+      else setLogoDarkUrl(null)
+      markDirty()
+      message.success('Logo 已删除')
+    } catch {
+      message.error('删除失败')
+    }
+  }
+
+  async function handleFaviconDelete() {
+    try {
+      await configApi.deleteFavicon()
+      setFaviconUrl(null)
+      markDirty()
+      message.success('Favicon 已删除')
+    } catch {
+      message.error('删除失败')
+    }
+  }
+
   async function handleFaviconUpload(file: File) {
     try {
       const res = await configApi.uploadFavicon(file)
@@ -183,31 +206,39 @@ export default function BrandingTab() {
                 <div style={{ fontSize: 11, color: '#9CA3B4', marginBottom: 8 }}>
                   {type === 'light' ? '亮色模式 Logo' : '暗色模式 Logo'}
                 </div>
-                <Upload
-                  accept=".svg,.png,.jpg,.jpeg"
-                  showUploadList={false}
-                  beforeUpload={file => handleLogoUpload(type, file)}
-                >
-                  <div style={{
-                    border: `1.5px dashed ${isDark ? 'rgba(162,155,254,0.2)' : '#E8ECF3'}`,
-                    borderRadius: 10, padding: '12px 8px', cursor: 'pointer', textAlign: 'center',
-                    background: isDark ? 'rgba(10,12,20,0.3)' : 'rgba(248,249,252,0.6)',
-                    transition: 'border-color 0.2s',
-                  }}>
-                    {(type === 'light' ? logoLightUrl : logoDarkUrl) ? (
-                      <img
-                        src={type === 'light' ? logoLightUrl! : logoDarkUrl!}
-                        alt="logo preview"
-                        style={{ maxHeight: 40, maxWidth: 80, objectFit: 'contain' }}
-                      />
-                    ) : (
-                      <div style={{ color: '#9CA3B4', fontSize: 12 }}>
-                        <UploadOutlined style={{ display: 'block', fontSize: 18, marginBottom: 4 }} />
-                        SVG / PNG
-                      </div>
-                    )}
-                  </div>
-                </Upload>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Upload
+                    accept=".svg,.png,.jpg,.jpeg"
+                    showUploadList={false}
+                    beforeUpload={file => handleLogoUpload(type, file)}
+                  >
+                    <div style={{
+                      border: `1.5px dashed ${isDark ? 'rgba(162,155,254,0.2)' : '#E8ECF3'}`,
+                      borderRadius: 10, padding: '12px 8px', cursor: 'pointer', textAlign: 'center',
+                      background: isDark ? 'rgba(10,12,20,0.3)' : 'rgba(248,249,252,0.6)',
+                      transition: 'border-color 0.2s', minWidth: 80,
+                    }}>
+                      {(type === 'light' ? logoLightUrl : logoDarkUrl) ? (
+                        <img
+                          src={type === 'light' ? logoLightUrl! : logoDarkUrl!}
+                          alt="logo preview"
+                          style={{ maxHeight: 40, maxWidth: 80, objectFit: 'contain' }}
+                        />
+                      ) : (
+                        <div style={{ color: '#9CA3B4', fontSize: 12 }}>
+                          <UploadOutlined style={{ display: 'block', fontSize: 18, marginBottom: 4 }} />
+                          SVG / PNG
+                        </div>
+                      )}
+                    </div>
+                  </Upload>
+                  {(type === 'light' ? logoLightUrl : logoDarkUrl) && (
+                    <Button
+                      size="small" danger type="text" icon={<DeleteOutlined />}
+                      onClick={() => handleLogoDelete(type)}
+                    />
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -241,6 +272,10 @@ export default function BrandingTab() {
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <img src={faviconUrl} alt="16px" style={{ width: 16, height: 16 }} />
                 <img src={faviconUrl} alt="32px" style={{ width: 32, height: 32 }} />
+                <Button
+                  size="small" danger type="text" icon={<DeleteOutlined />}
+                  onClick={handleFaviconDelete}
+                />
               </div>
             )}
           </div>

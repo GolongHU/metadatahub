@@ -80,7 +80,7 @@ def upgrade() -> None:
     for category, key, val, desc in branding_seeds:
         conn.execute(sa.text(
             "INSERT INTO platform_config (id, category, key, value, description, updated_at) "
-            "VALUES (:id, :category, :key, :value::jsonb, :desc, :now)"
+            "VALUES (:id, :category, :key, CAST(:value AS jsonb), :desc, :now)"
         ), {"id": str(uuid.uuid4()), "category": category, "key": key,
             "value": f'"{val}"', "desc": desc, "now": now})
 
@@ -117,7 +117,7 @@ def upgrade() -> None:
 
         conn.execute(sa.text(
             "INSERT INTO ai_providers (id, name, provider_type, base_url, api_key_encrypted, models, is_active, sort_order, created_at, updated_at) "
-            "VALUES (:id, :name, 'openai_compatible', :base_url, :api_key, :models::jsonb, true, 0, :now, :now)"
+            "VALUES (:id, :name, 'openai_compatible', :base_url, :api_key, CAST(:models AS jsonb), true, 0, :now, :now)"
         ), {"id": provider_id, "name": name, "base_url": ai_base_url,
             "api_key": encrypted, "models": model_list, "now": now})
 

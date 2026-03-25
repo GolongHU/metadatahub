@@ -2,6 +2,7 @@ import { Tabs } from 'antd'
 import { useThemeStore } from '../stores/themeStore'
 import AIModelsTab from './settings/AIModelsTab'
 import BrandingTab from './settings/BrandingTab'
+import DashboardTemplatesTab from './settings/DashboardTemplatesTab'
 import SystemTab from './settings/SystemTab'
 
 export default function SettingsPage() {
@@ -9,9 +10,10 @@ export default function SettingsPage() {
   const isDark = theme === 'dark'
 
   const tabItems = [
-    { key: 'branding', label: '品牌设置', children: <BrandingTab /> },
-    { key: 'ai',       label: 'AI 模型', children: <AIModelsTab /> },
-    { key: 'system',   label: '系统参数', children: <SystemTab /> },
+    { key: 'branding',   label: '品牌设置',   children: <BrandingTab /> },
+    { key: 'ai',         label: 'AI 模型',    children: <AIModelsTab /> },
+    { key: 'dashboards', label: '看板模板',   children: <DashboardTemplatesTab /> },
+    { key: 'system',     label: '系统参数',   children: <SystemTab /> },
   ]
 
   return (

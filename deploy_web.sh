@@ -4,7 +4,7 @@
 # Example: ./deploy_web.sh root@47.113.187.130
 
 SERVER=${1:-"root@47.113.187.130"}
-REMOTE_DIR="/root/metadatahub"
+REMOTE_DIR="/opt/metadatahub"
 
 echo "=== Syncing web app to $SERVER ==="
 rsync -avz --delete \

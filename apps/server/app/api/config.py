@@ -91,6 +91,36 @@ async def upload_favicon(
     )
 
 
+@router.delete("/admin/config/branding/logo")
+async def delete_logo(
+    type: str = Query("light", pattern="^(light|dark)$"),
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin),
+) -> dict:
+    config_key = f"logo_{type}_url"
+    url = await get_config("branding", config_key, db)
+    if url and isinstance(url, str):
+        path = url.lstrip("/")
+        if os.path.exists(path):
+            os.remove(path)
+    await set_config("branding", config_key, None, current_user.user_id, db)
+    return {"ok": True}
+
+
+@router.delete("/admin/config/branding/favicon")
+async def delete_favicon(
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin),
+) -> dict:
+    url = await get_config("branding", "favicon_url", db)
+    if url and isinstance(url, str):
+        path = url.lstrip("/")
+        if os.path.exists(path):
+            os.remove(path)
+    await set_config("branding", "favicon_url", None, current_user.user_id, db)
+    return {"ok": True}
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 async def _upload_branding_file(
