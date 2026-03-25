@@ -37,8 +37,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const viewState            = useViewStore((s) => s.viewState)
   const isDashboardFullscreen = useViewStore((s) => s.isDashboardFullscreen)
-  const isEditorPage = /^\/templates\/.+/.test(location.pathname)
-  const hideSidebar = isDashboardFullscreen || isEditorPage
+  const hideSidebar = isDashboardFullscreen
 
   const isDark = theme === 'dark'
   const role   = user?.role ?? ''
@@ -450,9 +449,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           marginLeft: hideSidebar ? 0 : 64,
           minHeight:  '100vh',
           position:   'relative',
-          // On editor pages, omit zIndex so no stacking context is created,
-          // allowing the editor's position:fixed z-index:1000 to work at root level.
-          ...(isEditorPage ? {} : { zIndex: 1 }),
+          zIndex: 1,
           transition: 'margin-left 0.3s cubic-bezier(0.4,0,0.2,1)',
         }}
       >

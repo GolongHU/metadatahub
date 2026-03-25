@@ -18,10 +18,11 @@ import { useBrandingStore } from './stores/brandingStore'
 import { useThemeStore } from './stores/themeStore'
 import axios from 'axios'
 
-function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
+function ProtectedRoute({ children, adminOnly = false, noLayout = false }: { children: React.ReactNode; adminOnly?: boolean; noLayout?: boolean }) {
   const { isAuthenticated, user } = useAuthStore()
   if (!isAuthenticated()) return <Navigate to="/login" replace />
   if (adminOnly && user?.role !== 'admin') return <Navigate to="/chat" replace />
+  if (noLayout) return <>{children}</>
   return <AppLayout>{children}</AppLayout>
 }
 
@@ -134,7 +135,7 @@ export default function App() {
         <Route path="/permissions"    element={<ProtectedRoute adminOnly><PermissionPage /></ProtectedRoute>} />
         <Route path="/settings"       element={<ProtectedRoute adminOnly><SettingsPage /></ProtectedRoute>} />
         <Route path="/templates"      element={<ProtectedRoute adminOnly><TemplatesPage /></ProtectedRoute>} />
-        <Route path="/templates/:id"  element={<ProtectedRoute adminOnly><TemplateEditor /></ProtectedRoute>} />
+        <Route path="/templates/:id"  element={<ProtectedRoute adminOnly noLayout><TemplateEditor /></ProtectedRoute>} />
         <Route path="/marketplace"    element={<ProtectedRoute><MarketplacePage /></ProtectedRoute>} />
         <Route path="/"  element={<Navigate to="/dashboard" replace />} />
         <Route path="*"  element={<Navigate to="/dashboard" replace />} />

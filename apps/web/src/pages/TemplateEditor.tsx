@@ -475,7 +475,6 @@ export default function TemplateEditor() {
     <div style={{
       position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
       background: isDark ? '#080A12' : '#F4F3FF',
-      zIndex: 1000,
     }}>
       {/* ── Topbar ── */}
       <div style={{
