@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react'
-import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Select, message, Spin, Switch } from 'antd'
 import { templateApi } from '../services/templateApi'
@@ -472,7 +471,7 @@ export default function TemplateEditor() {
     marginBottom: 12, boxSizing: 'border-box' as const,
   }
 
-  return createPortal(
+  return (
     <div style={{
       position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
       background: isDark ? '#080A12' : '#F4F3FF',
@@ -806,7 +805,6 @@ export default function TemplateEditor() {
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   )
 }

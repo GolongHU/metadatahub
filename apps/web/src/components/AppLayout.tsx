@@ -450,7 +450,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           marginLeft: hideSidebar ? 0 : 64,
           minHeight:  '100vh',
           position:   'relative',
-          zIndex:     1,
+          // On editor pages, omit zIndex so no stacking context is created,
+          // allowing the editor's position:fixed z-index:1000 to work at root level.
+          ...(isEditorPage ? {} : { zIndex: 1 }),
           transition: 'margin-left 0.3s cubic-bezier(0.4,0,0.2,1)',
         }}
       >
