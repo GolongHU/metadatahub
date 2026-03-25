@@ -7,6 +7,14 @@ import { useThemeStore } from '../stores/themeStore'
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
+// genId() requires HTTPS (secure context). Use Math.random fallback.
+function genId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+  })
+}
+
 function deepMerge<T>(base: T, patch: Partial<T>): T {
   return { ...base, ...patch }
 }
@@ -384,7 +392,7 @@ export default function TemplateEditor() {
   }, [id])
 
   const handleAddWidget = useCallback((item: WidgetLibraryItem) => {
-    const newId = crypto.randomUUID()
+    const newId = genId()
     setWidgets(prev => {
       const maxRow = prev.length > 0 ? Math.max(...prev.map(w => w.position.row)) : -1
       const defaultSpan: Record<string, number> = {
