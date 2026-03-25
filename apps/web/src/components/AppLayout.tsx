@@ -35,7 +35,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const { platformName, logoLightUrl, logoDarkUrl } = useBrandingStore()
   const particleRef = useRef<ParticleSystemRef>(null)
   const [isExpanded, setIsExpanded] = useState(false)
-  const viewState   = useViewStore((s) => s.viewState)
+  const viewState            = useViewStore((s) => s.viewState)
+  const isDashboardFullscreen = useViewStore((s) => s.isDashboardFullscreen)
 
   const isDark = theme === 'dark'
   const role   = user?.role ?? ''
@@ -142,7 +143,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <TransitionOverlay />
 
       {/* ── Overlay when sidebar is expanded ── */}
-      {isExpanded && (
+      {isExpanded && !isDashboardFullscreen && (
         <div
           style={{
             position:   'fixed',
@@ -162,11 +163,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <div
         style={{
           position:   'fixed',
-          left:       0,
+          left:       isDashboardFullscreen ? -64 : 0,
           top:        0,
           bottom:     0,
           width:      isExpanded ? 240 : 64,
-          transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
+          transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1), left 0.3s cubic-bezier(0.4,0,0.2,1)',
           background:    sidebarBg,
           backdropFilter: isExpanded ? 'blur(20px)' : 'blur(12px)',
           WebkitBackdropFilter: isExpanded ? 'blur(20px)' : 'blur(12px)',
@@ -444,10 +445,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       {/* ── Main content (always offset 64px) ── */}
       <div
         style={{
-          marginLeft: 64,
+          marginLeft: isDashboardFullscreen ? 0 : 64,
           minHeight:  '100vh',
           position:   'relative',
           zIndex:     1,
+          transition: 'margin-left 0.3s cubic-bezier(0.4,0,0.2,1)',
         }}
       >
         {children}

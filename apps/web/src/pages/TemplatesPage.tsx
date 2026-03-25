@@ -1,38 +1,40 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Button,
+  Dropdown,
   Input,
   message,
   Modal,
-  Popconfirm,
   Spin,
 } from 'antd'
+import type { MenuProps } from 'antd'
 import {
   AppstoreOutlined,
   CopyOutlined,
   DeleteOutlined,
   EditOutlined,
+  MoreOutlined,
   PlusOutlined,
   SendOutlined,
   ShopOutlined,
 } from '@ant-design/icons'
 import { templateApi } from '../services/templateApi'
-import type { TemplateOut } from '../types/template'
+import type { TemplateOut, WidgetConfig } from '../types/template'
+import { useThemeStore } from '../stores/themeStore'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const ROLE_COLOR: Record<string, { bg: string; color: string; label: string }> = {
-  admin:   { bg: 'rgba(108,92,231,0.18)',  color: '#A29BFE', label: '管理员' },
-  analyst: { bg: 'rgba(59,130,246,0.18)',  color: '#60A5FA', label: '分析师' },
-  viewer:  { bg: 'rgba(0,196,140,0.18)',   color: '#34D399', label: '查看者' },
-  partner: { bg: 'rgba(251,146,60,0.18)',  color: '#FB923C', label: '合作伙伴' },
+  admin:   { bg: 'rgba(162,155,254,0.12)', color: '#A29BFE', label: '管理员' },
+  analyst: { bg: 'rgba(59,130,246,0.12)',  color: '#60A5FA', label: '区域主管' },
+  viewer:  { bg: 'rgba(0,200,140,0.12)',   color: '#00E6A0', label: '伙伴经理' },
+  partner: { bg: 'rgba(255,185,70,0.12)',  color: '#FFD166', label: '合作伙伴' },
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
+  const diff  = Date.now() - new Date(iso).getTime()
   const mins  = Math.floor(diff / 60_000)
   const hours = Math.floor(diff / 3_600_000)
   const days  = Math.floor(diff / 86_400_000)
@@ -43,22 +45,110 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString('zh-CN')
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── TemplateThumbnail ─────────────────────────────────────────────────────────
+
+function TemplateThumbnail({ widgets, isDark }: { widgets: WidgetConfig[]; isDark: boolean }) {
+  const kpis    = widgets.filter((w) => w.type === 'kpi_card')
+  const charts  = widgets.filter((w) => w.type !== 'kpi_card' && w.type !== 'ranking_table')
+  const ranking = widgets.filter((w) => w.type === 'ranking_table')
+
+  const bg      = isDark ? 'rgba(0,0,0,0.20)' : 'rgba(108,92,231,0.04)'
+  const border  = isDark ? 'rgba(162,155,254,0.04)' : 'rgba(108,92,231,0.06)'
+
+  return (
+    <div
+      style={{
+        height: 140,
+        padding: 12,
+        background: bg,
+        borderBottom: `1px solid ${border}`,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 5,
+        flexShrink: 0,
+      }}
+    >
+      {/* Row 1: KPI blocks */}
+      {kpis.length > 0 && (
+        <div style={{ display: 'flex', gap: 4, height: 26 }}>
+          {kpis.slice(0, 5).map((_, i) => (
+            <div
+              key={i}
+              style={{
+                flex: 1,
+                borderRadius: 5,
+                background: isDark ? 'rgba(162,155,254,0.14)' : 'rgba(108,92,231,0.10)',
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Row 2: Chart blocks */}
+      <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+        {charts.length > 0 ? (
+          <>
+            <div style={{
+              flex: 3,
+              borderRadius: 5,
+              background: isDark ? 'rgba(108,92,231,0.10)' : 'rgba(108,92,231,0.07)',
+            }} />
+            <div style={{
+              flex: 2,
+              borderRadius: 5,
+              background: isDark ? 'rgba(0,200,140,0.09)' : 'rgba(0,200,140,0.07)',
+            }} />
+          </>
+        ) : (
+          <div style={{
+            flex: 1,
+            borderRadius: 5,
+            background: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)',
+          }} />
+        )}
+      </div>
+
+      {/* Row 3: Ranking / table bar */}
+      {(ranking.length > 0 || widgets.length > 2) && (
+        <div style={{
+          height: 22,
+          borderRadius: 5,
+          background: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)',
+        }} />
+      )}
+
+      {/* Mini shimmer lines for low-widget templates */}
+      {widgets.length <= 2 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 2 }}>
+          {[70, 50, 60].map((w, i) => (
+            <div key={i} style={{
+              height: 4,
+              width: `${w}%`,
+              borderRadius: 2,
+              background: isDark ? 'rgba(162,155,254,0.08)' : 'rgba(108,92,231,0.06)',
+            }} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── RolePill ──────────────────────────────────────────────────────────────────
 
 function RolePill({ role }: { role: string }) {
-  const cfg = ROLE_COLOR[role] ?? { bg: 'rgba(162,155,254,0.12)', color: '#9CA3B4', label: role }
+  const cfg = ROLE_COLOR[role] ?? { bg: 'rgba(162,155,254,0.10)', color: '#9CA3B4', label: role }
   return (
     <span
       style={{
         display: 'inline-block',
-        padding: '2px 9px',
-        borderRadius: 20,
+        padding: '3px 10px',
+        borderRadius: 12,
         fontSize: 11,
         fontWeight: 500,
         background: cfg.bg,
         color: cfg.color,
         marginRight: 4,
-        marginBottom: 4,
       }}
     >
       {cfg.label}
@@ -66,30 +156,30 @@ function RolePill({ role }: { role: string }) {
   )
 }
 
+// ── TemplateCard ──────────────────────────────────────────────────────────────
+
 interface TemplateCardProps {
-  template: TemplateOut
+  template:  TemplateOut
+  isDark:    boolean
   onClone:   (id: string, newName: string) => Promise<void>
   onPublish: (id: string) => Promise<void>
   onDelete:  (id: string) => Promise<void>
 }
 
-function TemplateCard({ template, onClone, onPublish, onDelete }: TemplateCardProps) {
+function TemplateCard({ template, isDark, onClone, onPublish, onDelete }: TemplateCardProps) {
   const navigate = useNavigate()
-  const [cloneModalOpen, setCloneModalOpen]   = useState(false)
-  const [cloneName,      setCloneName]        = useState('')
-  const [cloneLoading,   setCloneLoading]     = useState(false)
-  const [publishLoading, setPublishLoading]   = useState(false)
-  const [deleteLoading,  setDeleteLoading]    = useState(false)
+  const [hovered,       setHovered]       = useState(false)
+  const [cloneOpen,     setCloneOpen]     = useState(false)
+  const [cloneName,     setCloneName]     = useState('')
+  const [cloneLoading,  setCloneLoading]  = useState(false)
+  const [publishLoading,setPublishLoading]= useState(false)
 
   const handleCloneOk = async () => {
-    if (!cloneName.trim()) {
-      message.warning('请输入新模板名称')
-      return
-    }
+    if (!cloneName.trim()) { message.warning('请输入新模板名称'); return }
     setCloneLoading(true)
     try {
       await onClone(template.id, cloneName.trim())
-      setCloneModalOpen(false)
+      setCloneOpen(false)
       setCloneName('')
     } finally {
       setCloneLoading(false)
@@ -98,90 +188,124 @@ function TemplateCard({ template, onClone, onPublish, onDelete }: TemplateCardPr
 
   const handlePublish = async () => {
     setPublishLoading(true)
-    try {
-      await onPublish(template.id)
-    } finally {
-      setPublishLoading(false)
-    }
+    try { await onPublish(template.id) }
+    finally { setPublishLoading(false) }
   }
 
-  const handleDelete = async () => {
-    setDeleteLoading(true)
-    try {
-      await onDelete(template.id)
-    } finally {
-      setDeleteLoading(false)
-    }
-  }
+  const menuItems: MenuProps['items'] = [
+    {
+      key: 'edit',
+      icon: <EditOutlined />,
+      label: '编辑模板',
+      onClick: () => navigate(`/templates/${template.id}`),
+    },
+    {
+      key: 'clone',
+      icon: <CopyOutlined />,
+      label: '克隆',
+      onClick: () => { setCloneName(`${template.name} 副本`); setCloneOpen(true) },
+    },
+    ...(!template.is_published ? [{
+      key: 'publish',
+      icon: <SendOutlined />,
+      label: publishLoading ? '发布中…' : '发布到市场',
+      onClick: handlePublish,
+    }] : []),
+    { type: 'divider' as const },
+    {
+      key: 'delete',
+      icon: <DeleteOutlined />,
+      label: '删除',
+      danger: true,
+      onClick: () => {
+        Modal.confirm({
+          title: '确认删除',
+          content: '删除后无法恢复，确定要删除这个模板吗？',
+          okText: '删除',
+          cancelText: '取消',
+          okButtonProps: { danger: true },
+          onOk: () => onDelete(template.id),
+        })
+      },
+    },
+  ]
+
+  const cardBg     = isDark ? 'rgba(26,29,46,0.45)' : 'rgba(255,255,255,0.70)'
+  const cardBorder = isDark
+    ? (hovered ? 'rgba(162,155,254,0.18)' : 'rgba(162,155,254,0.06)')
+    : (hovered ? 'rgba(108,92,231,0.18)'  : 'rgba(108,92,231,0.08)')
+  const cardShadow = hovered
+    ? (isDark ? '0 8px 32px rgba(0,0,0,0.25)' : '0 8px 24px rgba(108,92,231,0.10)')
+    : (isDark ? '0 4px 16px rgba(0,0,0,0.15)' : '0 2px 12px rgba(108,92,231,0.05)')
 
   return (
     <>
       <div
         style={{
-          background: 'rgba(26,29,46,0.4)',
+          background: cardBg,
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
-          border: '1px solid rgba(162,155,254,0.06)',
-          borderRadius: 18,
+          border: `1px solid ${cardBorder}`,
+          borderRadius: 20,
+          boxShadow: cardShadow,
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          transition: 'border-color 0.2s, box-shadow 0.2s',
+          cursor: 'pointer',
+          transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
+          transition: 'border-color 0.2s, box-shadow 0.2s, transform 0.2s',
         }}
-        onMouseEnter={(e) => {
-          const el = e.currentTarget as HTMLDivElement
-          el.style.borderColor = 'rgba(162,155,254,0.2)'
-          el.style.boxShadow   = '0 8px 32px rgba(108,92,231,0.12)'
-        }}
-        onMouseLeave={(e) => {
-          const el = e.currentTarget as HTMLDivElement
-          el.style.borderColor = 'rgba(162,155,254,0.06)'
-          el.style.boxShadow   = 'none'
-        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       >
-        {/* Thumbnail */}
-        <div
-          style={{
-            height: 200,
-            position: 'relative',
-            background: 'rgba(108,92,231,0.08)',
-            borderBottom: '1px solid rgba(162,155,254,0.06)',
-            flexShrink: 0,
-          }}
-        >
+        {/* Thumbnail with hover overlay */}
+        <div style={{ position: 'relative' }}>
           {template.thumbnail_url ? (
             <img
               src={template.thumbnail_url}
               alt={template.name}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }}
             />
           ) : (
-            <div
-              style={{
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 4,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 48,
-                  fontWeight: 700,
-                  color: 'rgba(162,155,254,0.5)',
-                  lineHeight: 1,
-                }}
-              >
-                {template.widget_count}
-              </span>
-              <span style={{ fontSize: 12, color: '#5F6B7A' }}>个组件</span>
-            </div>
+            <TemplateThumbnail
+              widgets={(template.config?.widgets as WidgetConfig[]) ?? []}
+              isDark={isDark}
+            />
           )}
 
-          {/* Published badge overlay */}
+          {/* Hover overlay → "编辑" CTA */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'rgba(0,0,0,0.38)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: hovered ? 1 : 0,
+              transition: 'opacity 0.2s',
+              borderRadius: '20px 20px 0 0',
+            }}
+            onClick={() => navigate(`/templates/${template.id}`)}
+          >
+            <span
+              style={{
+                padding: '8px 22px',
+                borderRadius: 12,
+                border: '1px solid rgba(255,255,255,0.28)',
+                background: 'rgba(255,255,255,0.10)',
+                backdropFilter: 'blur(8px)',
+                color: '#fff',
+                fontSize: 13,
+                fontWeight: 500,
+                letterSpacing: '0.01em',
+              }}
+            >
+              编辑模板
+            </span>
+          </div>
+
+          {/* Published badge */}
           {template.is_published && (
             <span
               style={{
@@ -204,14 +328,13 @@ function TemplateCard({ template, onClone, onPublish, onDelete }: TemplateCardPr
         </div>
 
         {/* Card body */}
-        <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '14px 16px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {/* Name */}
           <div
             style={{
               fontSize: 14,
               fontWeight: 500,
-              color: '#E8ECF3',
-              marginBottom: 8,
+              color: isDark ? '#E8ECF3' : '#1A1D2E',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -221,128 +344,80 @@ function TemplateCard({ template, onClone, onPublish, onDelete }: TemplateCardPr
             {template.name}
           </div>
 
-          {/* Roles */}
+          {/* Meta */}
+          <div style={{ fontSize: 12, color: '#5F6B7A' }}>
+            {template.widget_count} 个组件 · 更新于 {relativeTime(template.updated_at)}
+          </div>
+
+          {/* Role tags */}
           {template.assigned_roles.length > 0 && (
-            <div style={{ marginBottom: 8, display: 'flex', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
               {template.assigned_roles.map((role) => (
                 <RolePill key={role} role={role} />
               ))}
             </div>
           )}
 
-          {/* Stats */}
-          <div style={{ fontSize: 11, color: '#9CA3B4', marginBottom: 4 }}>
-            {template.widget_count} 个组件 · v{template.version}
-          </div>
-
-          {/* Time */}
-          <div style={{ fontSize: 11, color: '#5F6B7A', marginBottom: 8 }}>
-            更新于 {relativeTime(template.updated_at)}
-          </div>
-
-          {/* Spacer */}
-          <div style={{ flex: 1 }} />
-
-          {/* Actions */}
+          {/* Bottom row: version + more-menu */}
           <div
             style={{
-              marginTop: 12,
-              paddingTop: 10,
-              borderTop: '1px solid rgba(255,255,255,0.05)',
               display: 'flex',
-              gap: 6,
-              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginTop: 'auto',
+              paddingTop: 8,
             }}
           >
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => navigate(`/templates/${template.id}`)}
-              style={{
-                background: 'rgba(108,92,231,0.15)',
-                border: '1px solid rgba(108,92,231,0.3)',
-                color: '#A29BFE',
-                borderRadius: 8,
-              }}
-            >
-              编辑
-            </Button>
+            <span style={{ fontSize: 11, color: isDark ? 'rgba(162,155,254,0.35)' : 'rgba(108,92,231,0.35)', letterSpacing: '0.02em' }}>
+              v{template.version}
+            </span>
 
-            <Button
-              size="small"
-              icon={<CopyOutlined />}
-              onClick={() => { setCloneName(`${template.name} 副本`); setCloneModalOpen(true) }}
-              style={{
-                background: 'rgba(59,130,246,0.12)',
-                border: '1px solid rgba(59,130,246,0.25)',
-                color: '#60A5FA',
-                borderRadius: 8,
-              }}
-            >
-              克隆
-            </Button>
-
-            {!template.is_published && (
-              <Button
-                size="small"
-                icon={<SendOutlined />}
-                loading={publishLoading}
-                onClick={handlePublish}
+            <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
+              <div
                 style={{
-                  background: 'rgba(0,196,140,0.12)',
-                  border: '1px solid rgba(0,196,140,0.25)',
-                  color: '#34D399',
+                  width: 28,
+                  height: 28,
                   borderRadius: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: isDark ? '#5F6B7A' : '#9CA3B4',
+                  fontSize: 16,
+                  transition: 'background 0.15s, color 0.15s',
                 }}
-              >
-                发布
-              </Button>
-            )}
-
-            <Popconfirm
-              title="确认删除"
-              description="删除后无法恢复，确定要删除这个模板吗？"
-              onConfirm={handleDelete}
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true }}
-            >
-              <Button
-                size="small"
-                icon={<DeleteOutlined />}
-                loading={deleteLoading}
-                style={{
-                  background: 'rgba(239,68,68,0.1)',
-                  border: '1px solid rgba(239,68,68,0.22)',
-                  color: '#F87171',
-                  borderRadius: 8,
+                onMouseEnter={(e) => {
+                  const el = e.currentTarget as HTMLDivElement
+                  el.style.background = 'rgba(162,155,254,0.10)'
+                  el.style.color = '#A29BFE'
                 }}
+                onMouseLeave={(e) => {
+                  const el = e.currentTarget as HTMLDivElement
+                  el.style.background = 'transparent'
+                  el.style.color = isDark ? '#5F6B7A' : '#9CA3B4'
+                }}
+                onClick={(e) => e.stopPropagation()}
               >
-                删除
-              </Button>
-            </Popconfirm>
+                <MoreOutlined />
+              </div>
+            </Dropdown>
           </div>
         </div>
       </div>
 
       {/* Clone modal */}
       <Modal
-        title={
-          <span style={{ color: '#E8ECF3' }}>克隆模板</span>
-        }
-        open={cloneModalOpen}
-        onCancel={() => { setCloneModalOpen(false); setCloneName('') }}
+        title={<span style={{ color: '#E8ECF3', fontWeight: 500 }}>克隆模板</span>}
+        open={cloneOpen}
+        onCancel={() => { setCloneOpen(false); setCloneName('') }}
         onOk={handleCloneOk}
         okText="克隆"
         cancelText="取消"
         confirmLoading={cloneLoading}
         styles={{
-          content: {
-            background: 'rgba(26,29,46,0.95)',
-            border: '1px solid rgba(162,155,254,0.12)',
-          },
-          header: { background: 'transparent' },
-          footer: { background: 'transparent' },
+          content: { background: 'rgba(26,29,46,0.95)', border: '1px solid rgba(162,155,254,0.12)' },
+          header:  { background: 'transparent' },
+          footer:  { background: 'transparent' },
         }}
       >
         <div style={{ marginTop: 16 }}>
@@ -369,6 +444,9 @@ function TemplateCard({ template, onClone, onPublish, onDelete }: TemplateCardPr
 
 export default function TemplatesPage() {
   const navigate = useNavigate()
+  const { theme } = useThemeStore()
+  const isDark = theme === 'dark'
+
   const [templates, setTemplates] = useState<TemplateOut[]>([])
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState<string | null>(null)
@@ -429,163 +507,144 @@ export default function TemplatesPage() {
     }
   }
 
+  const btnGhostStyle: React.CSSProperties = {
+    height: 36,
+    padding: '0 18px',
+    borderRadius: 12,
+    border: `1px solid ${isDark ? 'rgba(162,155,254,0.18)' : 'rgba(108,92,231,0.18)'}`,
+    background: 'transparent',
+    color: '#A29BFE',
+    fontSize: 13,
+    fontWeight: 400,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    transition: 'all 0.15s',
+  }
+
+  const btnPrimaryStyle: React.CSSProperties = {
+    height: 36,
+    padding: '0 18px',
+    borderRadius: 12,
+    border: 'none',
+    background: 'linear-gradient(135deg, #6C5CE7, #A29BFE)',
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    boxShadow: '0 4px 14px rgba(108,92,231,0.30)',
+    transition: 'box-shadow 0.15s',
+  }
+
   return (
     <div
       style={{
         minHeight: '100vh',
         background: 'transparent',
-        padding: '72px 20px 20px',
+        padding: '72px 24px 40px',
       }}
     >
-      {/* Header */}
+      {/* ── Header ── */}
       <div
         style={{
           display: 'flex',
-          alignItems: 'flex-start',
+          alignItems: 'flex-end',
           justifyContent: 'space-between',
-          marginBottom: 28,
+          marginBottom: 32,
           flexWrap: 'wrap',
           gap: 16,
         }}
       >
         <div>
-          <h1
-            style={{
-              fontSize: 22,
-              fontWeight: 700,
-              color: '#E8ECF3',
-              margin: 0,
-              lineHeight: 1.3,
-            }}
-          >
-            看板模板管理
+          <h1 style={{ fontSize: 22, fontWeight: 500, color: isDark ? '#E8ECF3' : '#1A1D2E', margin: 0, lineHeight: 1.3 }}>
+            看板模板
           </h1>
-          <p style={{ color: '#9CA3B4', fontSize: 13, margin: '6px 0 0' }}>
-            创建和管理看板模板，支持角色分配、版本控制与市场发布
+          <p style={{ fontSize: 13, color: '#5F6B7A', margin: '5px 0 0' }}>
+            创建和管理看板模板，支持角色分配与市场发布
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
-          <Button
-            icon={<ShopOutlined />}
-            onClick={() => navigate('/marketplace')}
-            style={{
-              background: 'rgba(162,155,254,0.08)',
-              border: '1px solid rgba(162,155,254,0.2)',
-              color: '#A29BFE',
-              borderRadius: 10,
-              height: 38,
-              paddingInline: 18,
-            }}
-          >
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+          <button style={btnGhostStyle} onClick={() => navigate('/marketplace')}>
+            <ShopOutlined style={{ fontSize: 13 }} />
             市场
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => navigate('/templates/new')}
-            style={{
-              background: 'linear-gradient(135deg, #6C5CE7 0%, #A29BFE 100%)',
-              border: 'none',
-              borderRadius: 10,
-              height: 38,
-              paddingInline: 18,
-              fontWeight: 500,
-              boxShadow: '0 4px 14px rgba(108,92,231,0.35)',
-            }}
-          >
+          </button>
+          <button style={btnPrimaryStyle} onClick={() => navigate('/templates/new')}>
+            <PlusOutlined style={{ fontSize: 13 }} />
             新建模板
-          </Button>
+          </button>
         </div>
       </div>
 
-      {/* Loading state */}
+      {/* ── Loading ── */}
       {loading && (
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            minHeight: 300,
-          }}
-        >
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 300 }}>
           <Spin size="large" />
         </div>
       )}
 
-      {/* Error state */}
+      {/* ── Error ── */}
       {!loading && error && (
-        <div
-          style={{
-            textAlign: 'center',
-            padding: '60px 20px',
-            color: '#F87171',
-          }}
-        >
-          <div style={{ fontSize: 32, marginBottom: 12 }}>⚠</div>
-          <div style={{ fontSize: 14, marginBottom: 16 }}>{error}</div>
-          <Button
-            onClick={fetchTemplates}
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: '#F87171' }}>
+          <div style={{ fontSize: 28, marginBottom: 12, opacity: 0.6 }}>⚠</div>
+          <div style={{ fontSize: 14, marginBottom: 20 }}>{error}</div>
+          <button
             style={{
-              background: 'rgba(239,68,68,0.1)',
-              border: '1px solid rgba(239,68,68,0.3)',
+              ...btnGhostStyle,
+              margin: '0 auto',
               color: '#F87171',
-              borderRadius: 8,
+              borderColor: 'rgba(239,68,68,0.3)',
             }}
+            onClick={fetchTemplates}
           >
             重试
-          </Button>
+          </button>
         </div>
       )}
 
-      {/* Empty state */}
+      {/* ── Empty state ── */}
       {!loading && !error && templates.length === 0 && (
-        <div
-          style={{
-            textAlign: 'center',
-            padding: '80px 20px',
-          }}
-        >
-          <div style={{ fontSize: 56, marginBottom: 16, opacity: 0.3 }}>
-            <AppstoreOutlined />
+        <div style={{ textAlign: 'center', padding: '80px 20px' }}>
+          <div style={{ marginBottom: 20 }}>
+            <AppstoreOutlined style={{ fontSize: 52, color: isDark ? 'rgba(162,155,254,0.20)' : 'rgba(108,92,231,0.15)' }} />
           </div>
-          <div style={{ fontSize: 16, color: '#9CA3B4', marginBottom: 8 }}>
-            还没有任何模板
+          <div style={{ fontSize: 16, fontWeight: 500, color: isDark ? '#9CA3B4' : '#5F6B7A', marginBottom: 8 }}>
+            还没有看板模板
           </div>
-          <div style={{ fontSize: 13, color: '#5F6B7A', marginBottom: 24 }}>
-            创建你的第一个看板模板，或从市场导入
+          <div style={{ fontSize: 13, color: '#5F6B7A', marginBottom: 28 }}>
+            创建你的第一个模板，或从市场导入
           </div>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => navigate('/templates/new')}
-            style={{
-              background: 'linear-gradient(135deg, #6C5CE7 0%, #A29BFE 100%)',
-              border: 'none',
-              borderRadius: 10,
-              height: 38,
-              paddingInline: 20,
-              fontWeight: 500,
-            }}
-          >
-            新建模板
-          </Button>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            <button style={btnPrimaryStyle} onClick={() => navigate('/templates/new')}>
+              <PlusOutlined style={{ fontSize: 13 }} />
+              新建模板
+            </button>
+            <button style={btnGhostStyle} onClick={() => navigate('/marketplace')}>
+              <ShopOutlined style={{ fontSize: 13 }} />
+              浏览市场
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Templates grid */}
+      {/* ── Grid ── */}
       {!loading && !error && templates.length > 0 && (
         <div
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: 20,
+            gap: 16,
           }}
         >
           {templates.map((template) => (
             <TemplateCard
               key={template.id}
               template={template}
+              isDark={isDark}
               onClone={handleClone}
               onPublish={handlePublish}
               onDelete={handleDelete}

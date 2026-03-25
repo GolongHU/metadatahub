@@ -6,6 +6,8 @@ import {
   EditOutlined,
   ExpandOutlined,
   FilterOutlined,
+  FullscreenExitOutlined,
+  FullscreenOutlined,
   PlusOutlined,
   ReloadOutlined,
   SendOutlined,
@@ -1496,13 +1498,16 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [showDashboardDropdown] = useState(false)
   const quickInputRef = useRef<HTMLInputElement>(null)
-  const { viewState: transitionState, startTransition, setLoading: setTransitionLoading, setExploding, setRevealing, setChatResult, setError: setTransitionError, finishReturn } = useViewStore()
+  const { viewState: transitionState, startTransition, setLoading: setTransitionLoading, setExploding, setRevealing, setChatResult, setError: setTransitionError, finishReturn, isDashboardFullscreen: isFullscreen, setDashboardFullscreen } = useViewStore()
   const initRef = useRef(false)
 
   // Esc key: close filter drawer
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowFilterDrawer(false)
+      if (e.key === 'Escape') {
+        setShowFilterDrawer(false)
+        setDashboardFullscreen(false)
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -1855,6 +1860,19 @@ export default function DashboardPage() {
                 onClick={() => selectedDashboard && runWidgetQueries(selectedDashboard, appliedFilters)}
               >
                 <ReloadOutlined style={{ animation: loading ? 'db-ball 1s linear infinite' : 'none' }} />
+              </div>
+            </Tooltip>
+
+            <Tooltip title={isFullscreen ? '退出全屏 (Esc)' : '全屏'}>
+              <div
+                style={{
+                  ...actionBtnStyle,
+                  background: isFullscreen ? 'rgba(108,92,231,0.25)' : actionBtnStyle.background,
+                  color: isFullscreen ? '#A29BFE' : actionBtnStyle.color,
+                }}
+                onClick={() => setDashboardFullscreen(!isFullscreen)}
+              >
+                {isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
               </div>
             </Tooltip>
 

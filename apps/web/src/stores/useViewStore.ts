@@ -25,6 +25,7 @@ interface ViewStore {
   pendingDatasetId: string
   result: ChatResult | null
   error: string | null
+  isDashboardFullscreen: boolean
 
   startTransition(query: string, datasetId: string): void
   setLoading(): void
@@ -34,14 +35,16 @@ interface ViewStore {
   reset(): void
   finishReturn(): void
   setError(err: string): void
+  setDashboardFullscreen(v: boolean): void
 }
 
 export const useViewStore = create<ViewStore>((set) => ({
-  viewState:        'dashboard',
-  pendingQuery:     '',
-  pendingDatasetId: '',
-  result:           null,
-  error:            null,
+  viewState:             'dashboard',
+  pendingQuery:          '',
+  pendingDatasetId:      '',
+  result:                null,
+  error:                 null,
+  isDashboardFullscreen: false,
 
   startTransition: (query, datasetId) =>
     set({ viewState: 'collapsing', pendingQuery: query, pendingDatasetId: datasetId, result: null, error: null }),
@@ -53,4 +56,5 @@ export const useViewStore = create<ViewStore>((set) => ({
   setError:      (err) => set({ viewState: 'dashboard', error: err }),
   reset:         () => set({ viewState: 'returning', pendingQuery: '', pendingDatasetId: '', result: null, error: null }),
   finishReturn:  () => set({ viewState: 'dashboard' }),
+  setDashboardFullscreen: (v) => set({ isDashboardFullscreen: v }),
 }))
