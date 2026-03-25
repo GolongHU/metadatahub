@@ -35,4 +35,7 @@ export const templateApi = {
     api.post<RenderResponse>(`/templates/${id}/render`, { filters }),
 
   widgetLibrary: () => api.get<WidgetLibraryItem[]>('/widget-library'),
+
+  generateWidgetSql: (body: { description: string; widget_type: string; current_sql?: string }) =>
+    api.post<{ sql: string }>('/ai/generate-widget-sql', body),
 }

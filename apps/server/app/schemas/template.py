@@ -114,3 +114,12 @@ class MarketplaceListItem(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class GenerateWidgetSQLRequest(BaseModel):
+    description: str
+    widget_type: str
+    current_sql: Optional[str] = None
+
+class GenerateWidgetSQLResponse(BaseModel):
+    sql: str

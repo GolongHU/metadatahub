@@ -302,6 +302,70 @@ async def publish_template(
     return _to_detail(dc)
 
 
+# ── AI: Widget SQL Generation ───────────────────────────────────────────────────
+
+from app.schemas.template import GenerateWidgetSQLRequest, GenerateWidgetSQLResponse  # noqa
+
+@router.post("/ai/generate-widget-sql", response_model=GenerateWidgetSQLResponse)
+async def generate_widget_sql(
+    body: GenerateWidgetSQLRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> GenerateWidgetSQLResponse:
+    _require_admin(current_user)
+
+    SYSTEM = f"""你是一个 SQL 生成助手，为 MetadataHub 分析平台（DuckDB / PostgreSQL）工作。
+根据用户描述，生成合适的 SQL SELECT 语句。当前 widget 类型: {body.widget_type}
+
+格式要求：
+- kpi_card: 返回单个数值，列名 value（SELECT COUNT(*) AS value FROM ...）
+- bar_chart: 分类列 + 数值列
+- line_chart: 时间列 + 数值列
+- pie_chart: 名称列 + 数值列
+- radar_chart: 多个维度列
+- ranking_table: 名称列 + 多个数值列
+- alert_list / action_items: 名称列 + 状态列
+
+规则：只返回纯 SELECT SQL，不含 DDL/DML/分号/注释/markdown，合理加 LIMIT。"""
+
+    user_msg = f"描述：{body.description}"
+    if body.current_sql:
+        user_msg += f"\n\n当前 SQL（可参考修改）：\n{body.current_sql}"
+
+    sql_text = ""
+    try:
+        from app.services.ai_engine import _get_routing, _call_anthropic, _call_openai_compatible
+        provider, routing = await _get_routing("nl2sql", db)
+        if provider:
+            if provider.provider_type == "anthropic":
+                sql_text = await _call_anthropic(
+                    api_key=provider.api_key,
+                    model=routing.model_name or "claude-haiku-4-5-20251001",
+                    system=SYSTEM,
+                    user_content=user_msg,
+                    max_tokens=400,
+                )
+            else:
+                sql_text = await _call_openai_compatible(
+                    api_key=provider.api_key,
+                    base_url=str(provider.base_url or ""),
+                    model=routing.model_name or "gpt-4o-mini",
+                    messages=[{"role": "system", "content": SYSTEM}, {"role": "user", "content": user_msg}],
+                    max_tokens=400,
+                )
+    except Exception:
+        pass
+
+    # Strip markdown fences if present
+    import re as _re
+    sql_text = sql_text.strip()
+    fence = _re.search(r"```(?:sql)?\s*([\s\S]+?)\s*```", sql_text)
+    if fence:
+        sql_text = fence.group(1).strip()
+
+    return GenerateWidgetSQLResponse(sql=sql_text or "-- AI 暂时不可用，请手动输入 SQL")
+
+
 # ── Marketplace ────────────────────────────────────────────────────────────────
 
 @router.get("/templates/marketplace", response_model=list[MarketplaceListItem])

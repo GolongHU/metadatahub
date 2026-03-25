@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Select, message, Spin, Switch } from 'antd'
+import { Select, message, Spin } from 'antd'
 import { templateApi } from '../services/templateApi'
 import type { TemplateDetail, WidgetConfig, WidgetLibraryItem } from '../types/template'
 import { useThemeStore } from '../stores/themeStore'
@@ -342,12 +342,413 @@ function CanvasWidget({ widget, index: _index, isSelected, isDark, onSelect, onM
   )
 }
 
-// ── PropRow helper ─────────────────────────────────────────────────────────────
+// ── PropPanel sub-components ───────────────────────────────────────────────────
 
-function PropLabel({ children }: { children: React.ReactNode }) {
+type PropTab = 'data' | 'style' | 'layout'
+
+const COLOR_PALETTES = [
+  { id: 'purple', c: ['#6C5CE7', '#A29BFE'] },
+  { id: 'blue',   c: ['#3B82F6', '#60A5FA'] },
+  { id: 'green',  c: ['#00C48C', '#34D399'] },
+  { id: 'gold',   c: ['#F59E0B', '#FBBF24'] },
+  { id: 'pink',   c: ['#EC4899', '#F472B6'] },
+  { id: 'teal',   c: ['#14B8A6', '#2DD4BF'] },
+]
+
+function MobiusIcon() {
   return (
-    <div style={{ fontSize: 10, color: '#5F6B7A', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: 6 }}>
-      {children}
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#A29BFE" strokeWidth="1.8">
+      <path d="M12 12c-2-2.5-4-4-6-4a4 4 0 000 8c2 0 4-1.5 6-4z"/>
+      <path d="M12 12c2 2.5 4 4 6 4a4 4 0 000-8c-2 0-4 1.5-6 4z"/>
+    </svg>
+  )
+}
+
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div onClick={() => onChange(!checked)} style={{
+      width: 30, height: 17, borderRadius: 9, flexShrink: 0, cursor: 'pointer',
+      background: checked ? '#6C5CE7' : 'rgba(255,255,255,0.12)',
+      position: 'relative', transition: 'background 0.2s',
+    }}>
+      <div style={{
+        position: 'absolute', width: 13, height: 13, borderRadius: '50%',
+        background: '#fff', top: 2, left: checked ? 15 : 2,
+        transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+      }} />
+    </div>
+  )
+}
+
+function SliderRow({ label, value, min, max, step = 1, unit = '', onChange }: {
+  label: string; value: number; min: number; max: number; step?: number; unit?: string;
+  onChange: (v: number) => void
+}) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+        <span style={{ fontSize: 11, color: '#9CA3B4' }}>{label}</span>
+        <span style={{ fontSize: 11, color: '#A29BFE', fontVariantNumeric: 'tabular-nums' }}>{value}{unit}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        style={{ width: '100%', accentColor: '#6C5CE7', cursor: 'pointer' }}
+      />
+    </div>
+  )
+}
+
+function TypeGroup({ options, value, onChange }: { options: { id: string; label: string }[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 12 }}>
+      {options.map(opt => {
+        const active = value === opt.id
+        return (
+          <button key={opt.id} onClick={() => onChange(opt.id)} style={{
+            padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
+            border: `1px solid ${active ? '#6C5CE7' : 'rgba(162,155,254,0.15)'}`,
+            background: active ? 'rgba(108,92,231,0.18)' : 'transparent',
+            color: active ? '#A29BFE' : '#9CA3B4', fontFamily: 'inherit',
+          }}>{opt.label}</button>
+        )
+      })}
+    </div>
+  )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 10, color: '#5F6B7A', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 8 }}>{children}</div>
+}
+
+// ── PropPanel ──────────────────────────────────────────────────────────────────
+
+interface PropPanelProps {
+  widget: WidgetConfig
+  onUpdate: (wid: string, patch: Partial<WidgetConfig>) => void
+  isDark: boolean
+  panelBorder: string
+}
+
+function PropPanel({ widget, onUpdate, isDark, panelBorder }: PropPanelProps) {
+  const [activeTab, setActiveTab] = useState<PropTab>('data')
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiInput, setAiInput] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiResult, setAiResult] = useState('')
+
+  const cfg = widget.config
+  const textColor = isDark ? '#E8ECF3' : '#1A1D2E'
+  const inputBg = isDark ? 'rgba(15,17,23,0.6)' : 'rgba(248,249,252,0.9)'
+  const inputBorder = isDark ? 'rgba(162,155,254,0.10)' : 'rgba(108,92,231,0.12)'
+
+  const baseInput: React.CSSProperties = {
+    width: '100%', padding: '7px 10px', borderRadius: 8,
+    border: `1px solid ${inputBorder}`, background: inputBg,
+    color: textColor, fontSize: 12, fontFamily: 'inherit',
+    outline: 'none', boxSizing: 'border-box',
+  }
+
+  function upd(patch: Record<string, unknown>) {
+    onUpdate(widget.id, { config: { ...cfg, ...patch } })
+  }
+
+  function SwitchRow({ label, configKey }: { label: string; configKey: string }) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 9 }}>
+        <span style={{ fontSize: 11, color: isDark ? '#9CA3B4' : '#5F6B7A' }}>{label}</span>
+        <Toggle checked={!!cfg[configKey]} onChange={v => upd({ [configKey]: v })} />
+      </div>
+    )
+  }
+
+  async function handleAiGenerate() {
+    if (!aiInput.trim()) return
+    setAiLoading(true); setAiResult('')
+    try {
+      const res = await templateApi.generateWidgetSql({
+        description: aiInput, widget_type: widget.type,
+        current_sql: String(cfg.query ?? ''),
+      })
+      setAiResult(res.data.sql)
+    } catch {
+      setAiResult('-- AI 生成失败，请手动输入 SQL')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  // ── Data Tab ─────────────────────────────────────────────────────────────────
+  const renderData = () => (
+    <div style={{ padding: '14px 14px 20px' }}>
+      <div style={{ marginBottom: 14 }}>
+        <SectionLabel>标题</SectionLabel>
+        <input value={widget.title} onChange={e => onUpdate(widget.id, { title: e.target.value })} style={baseInput} />
+      </div>
+
+      <div style={{ marginBottom: 6 }}>
+        <SectionLabel>SQL 查询</SectionLabel>
+        <div style={{ position: 'relative' }}>
+          <textarea
+            value={String(cfg.query ?? '')}
+            onChange={e => upd({ query: e.target.value })}
+            rows={7}
+            style={{
+              width: '100%', padding: '8px 10px', paddingBottom: 38, borderRadius: 8,
+              border: `1px solid ${isDark ? 'rgba(162,155,254,0.10)' : 'rgba(108,92,231,0.12)'}`,
+              background: isDark ? 'rgba(8,10,18,0.90)' : '#1A1D2E',
+              color: '#A29BFE', fontSize: 11,
+              fontFamily: '"JetBrains Mono","Fira Code",monospace',
+              outline: 'none', resize: 'vertical', lineHeight: 1.6, boxSizing: 'border-box',
+            }}
+          />
+          {/* AI assist bar */}
+          <div onClick={() => setAiOpen(v => !v)} style={{
+            position: 'absolute', bottom: 6, left: 6, right: 6,
+            display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 7,
+            background: aiOpen ? 'rgba(108,92,231,0.18)' : 'rgba(108,92,231,0.10)',
+            border: '1px solid rgba(108,92,231,0.20)', cursor: 'pointer', transition: 'background 0.15s',
+          }}>
+            <MobiusIcon />
+            <span style={{ flex: 1, fontSize: 10, color: '#A29BFE' }}>用自然语言描述，AI 生成 SQL…</span>
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#A29BFE" strokeWidth="2.5">
+              <path d={aiOpen ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'}/>
+            </svg>
+          </div>
+        </div>
+
+        {/* AI box */}
+        {aiOpen && (
+          <div style={{ marginTop: 6, padding: '10px', borderRadius: 10, background: 'rgba(108,92,231,0.06)', border: '1px solid rgba(108,92,231,0.12)' }}>
+            <div style={{ fontSize: 10, color: '#A29BFE', fontWeight: 600, marginBottom: 6 }}>AI SQL 助手</div>
+            <input
+              value={aiInput} onChange={e => setAiInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAiGenerate()}
+              placeholder="例：各区域合作伙伴平均得分，只看活跃伙伴"
+              style={{
+                width: '100%', padding: '6px 8px', borderRadius: 6, outline: 'none',
+                border: '1px solid rgba(108,92,231,0.20)',
+                background: 'rgba(10,12,20,0.55)', color: '#E8ECF3',
+                fontSize: 11, fontFamily: 'inherit', boxSizing: 'border-box',
+              }}
+            />
+            <button onClick={handleAiGenerate} disabled={aiLoading || !aiInput.trim()} style={{
+              marginTop: 6, width: '100%', padding: '5px 0', borderRadius: 6, border: 'none',
+              background: aiLoading ? 'rgba(108,92,231,0.12)' : 'rgba(108,92,231,0.28)',
+              color: '#A29BFE', fontSize: 11, cursor: aiLoading ? 'wait' : 'pointer', fontFamily: 'inherit',
+            }}>
+              {aiLoading ? '生成中…' : '生成 SQL →'}
+            </button>
+            {aiResult && (
+              <div style={{ marginTop: 6, padding: '7px 8px', borderRadius: 7, background: 'rgba(0,196,140,0.06)', border: '1px solid rgba(0,196,140,0.14)' }}>
+                <pre style={{ fontSize: 10, color: '#00C48C', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.6 }}>{aiResult}</pre>
+                <button onClick={() => { upd({ query: aiResult }); setAiOpen(false); setAiInput(''); setAiResult('') }} style={{
+                  marginTop: 6, width: '100%', padding: '4px 0', borderRadius: 5, border: 'none',
+                  background: 'rgba(0,196,140,0.16)', color: '#00C48C', fontSize: 10,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>✓ 采纳此 SQL</button>
+              </div>
+            )}
+          </div>
+        )}
+        <div style={{ fontSize: 10, color: isDark ? '#2E3450' : 'rgba(108,92,231,0.28)', marginTop: 5 }}>
+          使用 {'{table}'} 引用数据集表名
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <div style={{ flex: 1 }}>
+          <SectionLabel>排序</SectionLabel>
+          <select value={String(cfg.sort ?? 'desc')} onChange={e => upd({ sort: e.target.value })}
+            style={{ ...baseInput, appearance: 'none', cursor: 'pointer', padding: '6px 8px' }}>
+            <option value="desc">降序</option>
+            <option value="asc">升序</option>
+            <option value="none">不排序</option>
+          </select>
+        </div>
+        <div style={{ width: 64 }}>
+          <SectionLabel>上限</SectionLabel>
+          <input type="number" min={1} max={500} value={Number(cfg.limit ?? 50)} onChange={e => upd({ limit: Number(e.target.value) })}
+            style={{ ...baseInput, padding: '6px 8px', textAlign: 'center' }} />
+        </div>
+      </div>
+    </div>
+  )
+
+  // ── Style Tab ─────────────────────────────────────────────────────────────────
+  const renderStyle = () => {
+    const palette = String(cfg.color_palette ?? 'purple')
+    const colorPicker = (
+      <div style={{ marginBottom: 14 }}>
+        <SectionLabel>配色方案</SectionLabel>
+        <div style={{ display: 'flex', gap: 7 }}>
+          {COLOR_PALETTES.map(p => (
+            <div key={p.id} onClick={() => upd({ color_palette: p.id })} style={{
+              width: 26, height: 26, borderRadius: 8, cursor: 'pointer',
+              background: `linear-gradient(135deg,${p.c[0]},${p.c[1]})`,
+              outline: palette === p.id ? `2px solid ${p.c[0]}` : '2px solid transparent',
+              outlineOffset: 2, transition: 'outline 0.15s',
+            }} />
+          ))}
+        </div>
+      </div>
+    )
+
+    if (widget.type === 'bar_chart') return (
+      <div style={{ padding: '14px 14px 20px' }}>
+        <SectionLabel>图表子类型</SectionLabel>
+        <TypeGroup options={[{id:'vertical',label:'垂直'},{id:'horizontal',label:'水平'},{id:'stacked',label:'堆叠'},{id:'grouped',label:'分组'}]}
+          value={String(cfg.bar_type ?? 'vertical')} onChange={v => upd({ bar_type: v })} />
+        {colorPicker}
+        <SliderRow label="圆角" value={Number(cfg.bar_radius ?? 4)} min={0} max={16} unit="px" onChange={v => upd({ bar_radius: v })} />
+        <SectionLabel>显示选项</SectionLabel>
+        <SwitchRow label="显示数值" configKey="show_values" />
+        <SwitchRow label="显示网格线" configKey="show_grid" />
+        <SwitchRow label="显示图例" configKey="show_legend" />
+        <SwitchRow label="加载动画" configKey="animate" />
+      </div>
+    )
+
+    if (widget.type === 'line_chart') return (
+      <div style={{ padding: '14px 14px 20px' }}>
+        <SectionLabel>线条样式</SectionLabel>
+        <TypeGroup options={[{id:'smooth',label:'平滑'},{id:'straight',label:'折线'},{id:'step',label:'阶梯'}]}
+          value={String(cfg.line_style ?? 'smooth')} onChange={v => upd({ line_style: v })} />
+        {colorPicker}
+        <SliderRow label="线宽" value={Number(cfg.line_width ?? 2)} min={1} max={8} step={0.5} unit="px" onChange={v => upd({ line_width: v })} />
+        <SliderRow label="面积透明度" value={Number(cfg.area_opacity ?? 0.08)} min={0} max={0.6} step={0.01} onChange={v => upd({ area_opacity: v })} />
+        <SectionLabel>显示选项</SectionLabel>
+        <SwitchRow label="显示面积填充" configKey="show_area" />
+        <SwitchRow label="显示数据点" configKey="show_points" />
+        <SwitchRow label="加载动画" configKey="animate" />
+      </div>
+    )
+
+    if (widget.type === 'pie_chart') return (
+      <div style={{ padding: '14px 14px 20px' }}>
+        <SectionLabel>图表子类型</SectionLabel>
+        <TypeGroup options={[{id:'donut',label:'环形'},{id:'full',label:'饼图'},{id:'nested',label:'嵌套'}]}
+          value={String(cfg.pie_type ?? 'donut')} onChange={v => upd({ pie_type: v })} />
+        {colorPicker}
+        <SliderRow label="内径" value={Number(cfg.inner_radius ?? 45)} min={0} max={80} unit="%" onChange={v => upd({ inner_radius: v })} />
+        <SectionLabel>显示选项</SectionLabel>
+        <SwitchRow label="显示标签" configKey="show_labels" />
+        <SwitchRow label="显示百分比" configKey="show_percentages" />
+        <SwitchRow label="显示图例" configKey="show_legend" />
+      </div>
+    )
+
+    if (widget.type === 'kpi_card') return (
+      <div style={{ padding: '14px 14px 20px' }}>
+        <SectionLabel>数值格式</SectionLabel>
+        <TypeGroup options={[{id:'number',label:'数字'},{id:'currency',label:'¥货币'},{id:'percent',label:'%百分'},{id:'decimal',label:'小数'}]}
+          value={String(cfg.format ?? 'number')} onChange={v => upd({ format: v })} />
+        {colorPicker}
+        <SectionLabel>显示选项</SectionLabel>
+        <SwitchRow label="显示趋势箭头" configKey="show_trend" />
+        <SwitchRow label="显示迷你图" configKey="show_sparkline" />
+        <div style={{ marginTop: 10 }}>
+          <SectionLabel>预警阈值</SectionLabel>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, color: '#FF6B81', marginBottom: 4 }}>危险低于</div>
+              <input type="number" value={String(cfg.danger_threshold ?? '')} onChange={e => upd({ danger_threshold: e.target.value })}
+                style={{ ...baseInput, padding: '5px 8px' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, color: '#FFB946', marginBottom: 4 }}>警告低于</div>
+              <input type="number" value={String(cfg.warning_threshold ?? '')} onChange={e => upd({ warning_threshold: e.target.value })}
+                style={{ ...baseInput, padding: '5px 8px' }} />
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+
+    if (widget.type === 'radar_chart') return (
+      <div style={{ padding: '14px 14px 20px' }}>
+        {colorPicker}
+        <SliderRow label="填充透明度" value={Number(cfg.fill_opacity ?? 0.2)} min={0} max={0.8} step={0.05} onChange={v => upd({ fill_opacity: v })} />
+        <SliderRow label="线宽" value={Number(cfg.line_width ?? 2)} min={1} max={6} unit="px" onChange={v => upd({ line_width: v })} />
+        <SectionLabel>显示选项</SectionLabel>
+        <SwitchRow label="显示基准线" configKey="show_benchmark" />
+        <SwitchRow label="填充区域" configKey="fill_area" />
+        <SwitchRow label="显示数值" configKey="show_values" />
+      </div>
+    )
+
+    return (
+      <div style={{ padding: '14px 14px 20px' }}>
+        {colorPicker}
+        <SwitchRow label="斑马纹" configKey="striped" />
+        <SwitchRow label="显示边框" configKey="show_border" />
+      </div>
+    )
+  }
+
+  // ── Layout Tab ────────────────────────────────────────────────────────────────
+  const renderLayout = () => (
+    <div style={{ padding: '14px 14px 20px' }}>
+      <div style={{ marginBottom: 16 }}>
+        <SectionLabel>列宽（Col Span）</SectionLabel>
+        <div style={{ display: 'flex', gap: 5 }}>
+          {[1, 2, 3, 4, 6].map(n => {
+            const active = widget.position.col_span === n
+            return (
+              <button key={n} onClick={() => onUpdate(widget.id, { position: { ...widget.position, col_span: n } })} style={{
+                flex: 1, height: 32, borderRadius: 7, cursor: 'pointer',
+                border: `1px solid ${active ? '#6C5CE7' : 'rgba(162,155,254,0.15)'}`,
+                background: active ? 'rgba(108,92,231,0.18)' : 'transparent',
+                color: active ? '#A29BFE' : '#9CA3B4',
+                fontSize: 12, fontWeight: active ? 600 : 400, fontFamily: 'inherit',
+              }}>{n}</button>
+            )
+          })}
+        </div>
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <SectionLabel>行高</SectionLabel>
+        <div style={{ display: 'flex', gap: 5 }}>
+          {([{v:1,l:'1x'},{v:2,l:'2x'},{v:3,l:'3x'}] as {v:number;l:string}[]).map(({v, l}) => {
+            const active = (widget.position.row_span ?? 1) === v
+            return (
+              <button key={v} onClick={() => onUpdate(widget.id, { position: { ...widget.position, row_span: v } })} style={{
+                flex: 1, height: 32, borderRadius: 7, cursor: 'pointer',
+                border: `1px solid ${active ? '#6C5CE7' : 'rgba(162,155,254,0.15)'}`,
+                background: active ? 'rgba(108,92,231,0.18)' : 'transparent',
+                color: active ? '#A29BFE' : '#9CA3B4',
+                fontSize: 12, fontWeight: active ? 600 : 400, fontFamily: 'inherit',
+              }}>{l}</button>
+            )
+          })}
+        </div>
+      </div>
+      <SliderRow label="内边距" value={Number(cfg.padding ?? 16)} min={8} max={32} unit="px" onChange={v => upd({ padding: v })} />
+    </div>
+  )
+
+  const tabs: { id: PropTab; label: string }[] = [
+    { id: 'data', label: 'Data' }, { id: 'style', label: 'Style' }, { id: 'layout', label: 'Layout' },
+  ]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Tab bar */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${panelBorder}`, flexShrink: 0 }}>
+        {tabs.map(tab => (
+          <div key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+            flex: 1, padding: '11px 4px', textAlign: 'center', fontSize: 11, cursor: 'pointer',
+            color: activeTab === tab.id ? '#A29BFE' : '#5F6B7A',
+            borderBottom: `2px solid ${activeTab === tab.id ? '#6C5CE7' : 'transparent'}`,
+            transition: 'color 0.15s, border-color 0.15s', userSelect: 'none',
+          }}>{tab.label}</div>
+        ))}
+      </div>
+      {/* Tab content */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {activeTab === 'data'   && renderData()}
+        {activeTab === 'style'  && renderStyle()}
+        {activeTab === 'layout' && renderLayout()}
+      </div>
     </div>
   )
 }
@@ -458,27 +859,12 @@ export default function TemplateEditor() {
   }
 
   const selectedWidget = widgets.find(w => w.id === selectedWidgetId) ?? null
-  const selectedLibraryItem = selectedWidget
-    ? widgetLibrary.find(item => item.id === selectedWidget.type) ?? null
-    : null
-  const hasQueryField = selectedLibraryItem
-    ? 'query' in (selectedLibraryItem.config_schema?.properties as Record<string, unknown> ?? {})
-    : false
 
   // Panel colors
   const panelBg    = isDark ? 'rgba(11,13,20,0.85)' : 'rgba(255,255,255,0.82)'
   const panelBorder = isDark ? 'rgba(162,155,254,0.05)' : 'rgba(108,92,231,0.07)'
   const topbarBg   = isDark ? 'rgba(15,17,26,0.70)' : 'rgba(255,255,255,0.75)'
   const canvasBg   = isDark ? 'rgba(8,10,18,0.50)' : 'rgba(244,243,255,0.50)'
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '8px 10px', borderRadius: 8,
-    border: `1px solid ${isDark ? 'rgba(162,155,254,0.10)' : 'rgba(108,92,231,0.12)'}`,
-    background: isDark ? 'rgba(15,17,23,0.6)' : 'rgba(248,249,252,0.8)',
-    color: isDark ? '#E8ECF3' : '#1A1D2E',
-    fontSize: 12, fontFamily: 'inherit', outline: 'none',
-    marginBottom: 12, boxSizing: 'border-box' as const,
-  }
-
   return (
     <div style={{
       position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
@@ -682,17 +1068,9 @@ export default function TemplateEditor() {
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
           borderLeft: `1px solid ${panelBorder}`,
-          overflowY: 'auto',
+          overflow: 'hidden',
+          display: 'flex', flexDirection: 'column',
         }}>
-          <div style={{
-            padding: '14px 14px 10px',
-            fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#5F6B7A',
-            borderBottom: `1px solid ${panelBorder}`,
-            marginBottom: 14,
-          }}>
-            属性
-          </div>
-
           {!selectedWidget ? (
             <div style={{ padding: '40px 20px', textAlign: 'center' }}>
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={isDark ? '#2E3450' : 'rgba(108,92,231,0.2)'} strokeWidth="1" style={{ marginBottom: 10 }}>
@@ -704,111 +1082,7 @@ export default function TemplateEditor() {
               </div>
             </div>
           ) : (
-            <div style={{ padding: '0 14px 14px' }}>
-
-              {/* Title */}
-              <div style={{ marginBottom: 12 }}>
-                <PropLabel>标题</PropLabel>
-                <input
-                  value={selectedWidget.title}
-                  onChange={e => updateWidget(selectedWidget.id, { title: e.target.value })}
-                  style={inputStyle}
-                />
-              </div>
-
-              {/* Col span buttons */}
-              <div style={{ marginBottom: 12 }}>
-                <PropLabel>列宽</PropLabel>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {[1, 2, 3, 4, 6].map(n => {
-                    const active = selectedWidget.position.col_span === n
-                    return (
-                      <button
-                        key={n}
-                        onClick={() => updateWidget(selectedWidget.id, { position: { ...selectedWidget.position, col_span: n } })}
-                        style={{
-                          width: 30, height: 28, borderRadius: 6, cursor: 'pointer',
-                          border: `1px solid ${active ? '#6C5CE7' : isDark ? 'rgba(162,155,254,0.10)' : 'rgba(108,92,231,0.12)'}`,
-                          background: active
-                            ? 'rgba(108,92,231,0.12)'
-                            : isDark ? 'transparent' : 'rgba(248,249,252,0.6)',
-                          color: active ? '#A29BFE' : isDark ? '#5F6B7A' : '#9CA3B4',
-                          fontSize: 11, fontFamily: 'inherit',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}
-                      >
-                        {n}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* SQL */}
-              {hasQueryField && (
-                <div style={{ marginBottom: 12 }}>
-                  <PropLabel>SQL 查询</PropLabel>
-                  <textarea
-                    value={String(selectedWidget.config.query ?? '')}
-                    onChange={e => updateWidget(selectedWidget.id, { config: { ...selectedWidget.config, query: e.target.value } })}
-                    rows={6}
-                    style={{
-                      width: '100%', padding: '8px 10px', borderRadius: 8,
-                      border: `1px solid ${isDark ? 'rgba(162,155,254,0.10)' : 'rgba(108,92,231,0.12)'}`,
-                      background: isDark ? 'rgba(8,10,18,0.80)' : '#1A1D2E',
-                      color: '#A29BFE', fontSize: 11,
-                      fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-                      outline: 'none', resize: 'vertical',
-                      lineHeight: 1.6, boxSizing: 'border-box',
-                    }}
-                  />
-                  <div style={{ fontSize: 10, color: isDark ? '#2E3450' : 'rgba(108,92,231,0.30)', marginTop: -8, marginBottom: 4 }}>
-                    Use {'{table}'} for dataset table
-                  </div>
-                </div>
-              )}
-
-              {/* Format (kpi_card) */}
-              {selectedWidget.type === 'kpi_card' && (
-                <div style={{ marginBottom: 12 }}>
-                  <PropLabel>格式</PropLabel>
-                  <select
-                    value={String(selectedWidget.config.format ?? 'number')}
-                    onChange={e => updateWidget(selectedWidget.id, { config: { ...selectedWidget.config, format: e.target.value } })}
-                    style={{ ...inputStyle, appearance: 'none', cursor: 'pointer' }}
-                  >
-                    <option value="number">数字</option>
-                    <option value="currency">货币 (¥)</option>
-                    <option value="percent">百分比 (%)</option>
-                    <option value="decimal">小数</option>
-                  </select>
-                </div>
-              )}
-
-              {/* Smooth (line_chart) */}
-              {selectedWidget.type === 'line_chart' && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <span style={{ fontSize: 11, color: isDark ? '#9CA3B4' : '#5F6B7A' }}>平滑曲线</span>
-                  <Switch
-                    size="small"
-                    checked={!!selectedWidget.config.smooth}
-                    onChange={v => updateWidget(selectedWidget.id, { config: { ...selectedWidget.config, smooth: v } })}
-                  />
-                </div>
-              )}
-
-              {/* Donut (pie_chart) */}
-              {selectedWidget.type === 'pie_chart' && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <span style={{ fontSize: 11, color: isDark ? '#9CA3B4' : '#5F6B7A' }}>环形图</span>
-                  <Switch
-                    size="small"
-                    checked={!!selectedWidget.config.donut}
-                    onChange={v => updateWidget(selectedWidget.id, { config: { ...selectedWidget.config, donut: v } })}
-                  />
-                </div>
-              )}
-            </div>
+            <PropPanel widget={selectedWidget} onUpdate={updateWidget} isDark={isDark} panelBorder={panelBorder} />
           )}
         </div>
       </div>
