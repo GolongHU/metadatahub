@@ -577,8 +577,10 @@ function PropPanel({ widget, onUpdate, isDark, panelBorder }: PropPanelProps) {
   // ── Style Tab ─────────────────────────────────────────────────────────────────
   const renderStyle = () => {
     const palette = String(cfg.color_palette ?? 'purple')
+    const divider = <div style={{ height: 1, background: 'rgba(162,155,254,0.06)', margin: '10px 0' }} />
+
     const colorPicker = (
-      <div style={{ marginBottom: 14 }}>
+      <div style={{ marginBottom: 12 }}>
         <SectionLabel>配色方案</SectionLabel>
         <div style={{ display: 'flex', gap: 7 }}>
           {COLOR_PALETTES.map(p => (
@@ -596,91 +598,133 @@ function PropPanel({ widget, onUpdate, isDark, panelBorder }: PropPanelProps) {
     if (widget.type === 'bar_chart') return (
       <div style={{ padding: '14px 14px 20px' }}>
         <SectionLabel>图表子类型</SectionLabel>
-        <TypeGroup options={[{id:'vertical',label:'垂直'},{id:'horizontal',label:'水平'},{id:'stacked',label:'堆叠'},{id:'grouped',label:'分组'}]}
+        <TypeGroup
+          options={[{id:'vertical',label:'纵向'},{id:'horizontal',label:'横向'},{id:'stacked',label:'堆叠'},{id:'grouped',label:'分组'}]}
           value={String(cfg.bar_type ?? 'vertical')} onChange={v => upd({ bar_type: v })} />
         {colorPicker}
-        <SliderRow label="圆角" value={Number(cfg.bar_radius ?? 4)} min={0} max={16} unit="px" onChange={v => upd({ bar_radius: v })} />
-        <SectionLabel>显示选项</SectionLabel>
-        <SwitchRow label="显示数值" configKey="show_values" />
+        <SectionLabel>颜色模式</SectionLabel>
+        <TypeGroup
+          options={[{id:'single',label:'单色'},{id:'gradient',label:'渐变'},{id:'byValue',label:'按值'},{id:'byCategory',label:'按分类'}]}
+          value={String(cfg.color_mode ?? 'single')} onChange={v => upd({ color_mode: v })} />
+        {divider}
+        <SliderRow label="圆角" value={Number(cfg.bar_radius ?? 4)} min={0} max={12} unit="px" onChange={v => upd({ bar_radius: v })} />
+        <SliderRow label="柱宽" value={Number(cfg.bar_width ?? 28)} min={10} max={60} unit="px" onChange={v => upd({ bar_width: v })} />
+        <SliderRow label="间距" value={Number(cfg.bar_gap ?? 8)} min={2} max={30} unit="px" onChange={v => upd({ bar_gap: v })} />
+        {divider}
+        <SwitchRow label="显示数值标签" configKey="show_values" />
         <SwitchRow label="显示网格线" configKey="show_grid" />
+        <SwitchRow label="显示坐标轴" configKey="show_axis" />
         <SwitchRow label="显示图例" configKey="show_legend" />
-        <SwitchRow label="加载动画" configKey="animate" />
+        <SwitchRow label="入场动画" configKey="animate" />
       </div>
     )
 
     if (widget.type === 'line_chart') return (
       <div style={{ padding: '14px 14px 20px' }}>
         <SectionLabel>线条样式</SectionLabel>
-        <TypeGroup options={[{id:'smooth',label:'平滑'},{id:'straight',label:'折线'},{id:'step',label:'阶梯'}]}
+        <TypeGroup
+          options={[{id:'smooth',label:'平滑'},{id:'straight',label:'直线'},{id:'step',label:'阶梯'}]}
           value={String(cfg.line_style ?? 'smooth')} onChange={v => upd({ line_style: v })} />
         {colorPicker}
-        <SliderRow label="线宽" value={Number(cfg.line_width ?? 2)} min={1} max={8} step={0.5} unit="px" onChange={v => upd({ line_width: v })} />
-        <SliderRow label="面积透明度" value={Number(cfg.area_opacity ?? 0.08)} min={0} max={0.6} step={0.01} onChange={v => upd({ area_opacity: v })} />
-        <SectionLabel>显示选项</SectionLabel>
+        {divider}
+        <SliderRow label="线宽" value={Number(cfg.line_width ?? 2.5)} min={1} max={5} step={0.5} unit="px" onChange={v => upd({ line_width: v })} />
+        <SliderRow label="数据点大小" value={Number(cfg.point_size ?? 0)} min={0} max={8} unit="px" onChange={v => upd({ point_size: v })} />
+        <SliderRow label="填充透明度" value={Number(cfg.area_opacity ?? 8)} min={0} max={30} unit="%" onChange={v => upd({ area_opacity: v })} />
+        {divider}
         <SwitchRow label="显示面积填充" configKey="show_area" />
         <SwitchRow label="显示数据点" configKey="show_points" />
-        <SwitchRow label="加载动画" configKey="animate" />
+        <SwitchRow label="显示网格线" configKey="show_grid" />
+        <SwitchRow label="显示图例" configKey="show_legend" />
+        <SwitchRow label="入场动画" configKey="animate" />
       </div>
     )
 
     if (widget.type === 'pie_chart') return (
       <div style={{ padding: '14px 14px 20px' }}>
-        <SectionLabel>图表子类型</SectionLabel>
-        <TypeGroup options={[{id:'donut',label:'环形'},{id:'full',label:'饼图'},{id:'nested',label:'嵌套'}]}
+        <SectionLabel>图表类型</SectionLabel>
+        <TypeGroup
+          options={[{id:'donut',label:'环形'},{id:'full',label:'实心'},{id:'nightingale',label:'南丁格尔'}]}
           value={String(cfg.pie_type ?? 'donut')} onChange={v => upd({ pie_type: v })} />
         {colorPicker}
-        <SliderRow label="内径" value={Number(cfg.inner_radius ?? 45)} min={0} max={80} unit="%" onChange={v => upd({ inner_radius: v })} />
-        <SectionLabel>显示选项</SectionLabel>
+        {divider}
+        <SliderRow label="内径" value={Number(cfg.inner_radius ?? 45)} min={0} max={70} unit="%" onChange={v => upd({ inner_radius: v })} />
+        <SliderRow label="外径" value={Number(cfg.outer_radius ?? 72)} min={50} max={90} unit="%" onChange={v => upd({ outer_radius: v })} />
+        <SliderRow label="边框宽度" value={Number(cfg.border_width ?? 2)} min={0} max={6} unit="px" onChange={v => upd({ border_width: v })} />
+        {divider}
         <SwitchRow label="显示标签" configKey="show_labels" />
         <SwitchRow label="显示百分比" configKey="show_percentages" />
+        <SwitchRow label="显示中心文字" configKey="show_center_text" />
         <SwitchRow label="显示图例" configKey="show_legend" />
+        <SwitchRow label="入场动画" configKey="animate" />
       </div>
     )
 
     if (widget.type === 'kpi_card') return (
       <div style={{ padding: '14px 14px 20px' }}>
         <SectionLabel>数值格式</SectionLabel>
-        <TypeGroup options={[{id:'number',label:'数字'},{id:'currency',label:'¥货币'},{id:'percent',label:'%百分'},{id:'decimal',label:'小数'}]}
+        <TypeGroup
+          options={[{id:'number',label:'数字'},{id:'currency',label:'¥ 金额'},{id:'percent',label:'% 百分比'},{id:'custom',label:'自定义'}]}
           value={String(cfg.format ?? 'number')} onChange={v => upd({ format: v })} />
         {colorPicker}
-        <SectionLabel>显示选项</SectionLabel>
+        {divider}
         <SwitchRow label="显示趋势箭头" configKey="show_trend" />
-        <SwitchRow label="显示迷你图" configKey="show_sparkline" />
-        <div style={{ marginTop: 10 }}>
-          <SectionLabel>预警阈值</SectionLabel>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 10, color: '#FF6B81', marginBottom: 4 }}>危险低于</div>
-              <input type="number" value={String(cfg.danger_threshold ?? '')} onChange={e => upd({ danger_threshold: e.target.value })}
-                style={{ ...baseInput, padding: '5px 8px' }} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 10, color: '#FFB946', marginBottom: 4 }}>警告低于</div>
-              <input type="number" value={String(cfg.warning_threshold ?? '')} onChange={e => upd({ warning_threshold: e.target.value })}
-                style={{ ...baseInput, padding: '5px 8px' }} />
+        <SwitchRow label="显示迷你折线" configKey="show_sparkline" />
+        <SwitchRow label="阈值高亮" configKey="threshold_highlight" />
+        {!!cfg.threshold_highlight && (
+          <div style={{ marginTop: 8, padding: '10px 10px 6px', borderRadius: 8, background: 'rgba(162,155,254,0.04)', border: '1px solid rgba(162,155,254,0.06)' }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: '#FF6B81', marginBottom: 4 }}>危险低于</div>
+                <input type="number" value={String(cfg.danger_threshold ?? '')} onChange={e => upd({ danger_threshold: e.target.value })}
+                  style={{ ...baseInput, padding: '5px 8px', fontSize: 11 }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: '#FFB946', marginBottom: 4 }}>警告低于</div>
+                <input type="number" value={String(cfg.warning_threshold ?? '')} onChange={e => upd({ warning_threshold: e.target.value })}
+                  style={{ ...baseInput, padding: '5px 8px', fontSize: 11 }} />
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     )
 
     if (widget.type === 'radar_chart') return (
       <div style={{ padding: '14px 14px 20px' }}>
         {colorPicker}
-        <SliderRow label="填充透明度" value={Number(cfg.fill_opacity ?? 0.2)} min={0} max={0.8} step={0.05} onChange={v => upd({ fill_opacity: v })} />
-        <SliderRow label="线宽" value={Number(cfg.line_width ?? 2)} min={1} max={6} unit="px" onChange={v => upd({ line_width: v })} />
-        <SectionLabel>显示选项</SectionLabel>
-        <SwitchRow label="显示基准线" configKey="show_benchmark" />
-        <SwitchRow label="填充区域" configKey="fill_area" />
+        {divider}
+        <SliderRow label="填充透明度" value={Number(cfg.fill_opacity ?? 20)} min={5} max={50} unit="%" onChange={v => upd({ fill_opacity: v })} />
+        <SliderRow label="线宽" value={Number(cfg.line_width ?? 2)} min={1} max={4} unit="px" onChange={v => upd({ line_width: v })} />
+        {divider}
+        <SwitchRow label="显示全网均值对比" configKey="show_benchmark" />
+        <SwitchRow label="填充面积" configKey="fill_area" />
         <SwitchRow label="显示数值" configKey="show_values" />
+        <SwitchRow label="入场动画" configKey="animate" />
       </div>
     )
 
+    if (widget.type === 'ranking_table') return (
+      <div style={{ padding: '14px 14px 20px' }}>
+        {colorPicker}
+        {divider}
+        <SwitchRow label="条件配色" configKey="conditional_color" />
+        <SwitchRow label="显示排名序号" configKey="show_rank" />
+        <SwitchRow label="显示奖牌图标" configKey="show_medal" />
+        <SwitchRow label="显示层级标签" configKey="show_tier_label" />
+        <SwitchRow label="斑马纹" configKey="striped" />
+        <SwitchRow label="显示边框" configKey="show_border" />
+        {divider}
+        <SliderRow label="每页行数" value={Number(cfg.page_size ?? 15)} min={5} max={30} unit="行" onChange={v => upd({ page_size: v })} />
+      </div>
+    )
+
+    // alert_list / action_items / fallback
     return (
       <div style={{ padding: '14px 14px 20px' }}>
         {colorPicker}
-        <SwitchRow label="斑马纹" configKey="striped" />
-        <SwitchRow label="显示边框" configKey="show_border" />
+        {divider}
+        <SwitchRow label="显示图标" configKey="show_icon" />
+        <SwitchRow label="显示时间戳" configKey="show_timestamp" />
       </div>
     )
   }
