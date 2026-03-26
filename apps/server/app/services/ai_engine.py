@@ -14,7 +14,7 @@ from app.schemas.query import GeneratedSQL
 # ── Prompt builders ───────────────────────────────────────────────────────────
 
 def _build_schema_block(table_name: str, schema: DatasetSchema) -> str:
-    lines = [f"Table: {table_name}", "Columns:"]
+    lines = [f"Table: {table_name}", "Columns (always reference with double-quotes in SQL):"]
     for col in schema.columns:
         extras: List[str] = []
         if col.sample_values:
@@ -25,7 +25,8 @@ def _build_schema_block(table_name: str, schema: DatasetSchema) -> str:
         if col.distinct_count:
             extras.append(f"{col.distinct_count} distinct values")
         extra_str = "  # " + " | ".join(extras) if extras else ""
-        lines.append(f"  - {col.name} ({col.type}): {col.description}{extra_str}")
+        # Show column name with double-quotes so AI knows exactly how to reference it
+        lines.append(f'  - "{col.name}" ({col.type}): {col.description}{extra_str}')
     return "\n".join(lines)
 
 
@@ -59,6 +60,7 @@ _SYSTEM_PROMPT_TEMPLATE = """\
 3. DuckDB 中所有列均以 VARCHAR 存储。需要聚合时请 CAST 为 DOUBLE/INTEGER。
 4. 保持 SQL 简洁，符合 DuckDB 语法。
 5. 不要添加任何 WHERE 权限过滤条件，系统会自动处理。
+6. 所有列名必须用双引号括起来，例如："合作伙伴名称" → \"合作伙伴名称\"，不得使用反引号或方括号。
 
 {chart_rules}
 
@@ -263,7 +265,8 @@ async def generate_sql(
         user_content = (
             f"{question}\n\n"
             f"注意：上次生成的 SQL 执行时报错：{error_context}\n"
-            f"请修正 SQL，确保语法正确并只使用表中已有的列名。"
+            f"请修正 SQL，确保：1) 语法正确；2) 只使用表中已有的列名；"
+            f"3) 所有列名必须用双引号括起来（如 \"列名\"）。"
         )
 
     raw = await _generate_raw(system_prompt, user_content, db)
