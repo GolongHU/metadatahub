@@ -23,6 +23,8 @@ from app.schemas.dashboard import (
     DashboardListItem,
     DashboardQueryRequest,
     DashboardQueryResponse,
+    ImportTemplateRequest,
+    ImportTemplateResponse,
     UpdateDashboardRequest,
     WidgetResult,
 )
@@ -211,6 +213,67 @@ async def list_dashboards(
         )
         for d in dashboards
     ]
+
+
+# ── Import from Template ──────────────────────────────────────────────────────
+
+@router.post("/import-template", response_model=ImportTemplateResponse)
+async def import_template(
+    body: ImportTemplateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> ImportTemplateResponse:
+    import copy
+
+    # Load template
+    tmpl_result = await db.execute(
+        select(DashboardConfig).where(
+            DashboardConfig.id == body.template_id,
+            DashboardConfig.dashboard_type == "template",
+        )
+    )
+    template = tmpl_result.scalars().first()
+    if template is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    # Deep-copy config
+    config = copy.deepcopy(template.config or {})
+
+    # Resolve duckdb table name and substitute {table}
+    if body.dataset_id is not None:
+        ds_result = await db.execute(
+            select(Dataset).where(Dataset.id == body.dataset_id)
+        )
+        dataset = ds_result.scalars().first()
+        if dataset:
+            table_name = getattr(dataset, "duckdb_table_name", None) or f"dataset_{dataset.id.hex}"
+            for widget in config.get("widgets", []):
+                widget_cfg = widget.get("config", {})
+                if "query" in widget_cfg:
+                    widget_cfg["query"] = widget_cfg["query"].replace("{table}", f'"{table_name}"')
+
+    dashboard_name = (body.name or "").strip() or template.name
+    user_id = current_user.user_id if isinstance(current_user.user_id, uuid.UUID) else uuid.UUID(str(current_user.user_id))
+
+    new_dashboard = DashboardConfig(
+        id=uuid.uuid4(),
+        name=dashboard_name,
+        dataset_id=body.dataset_id,
+        config=config,
+        dashboard_type="personal",
+        owner_id=user_id,
+        is_pinned=False,
+        sort_order=0,
+    )
+    db.add(new_dashboard)
+    await db.commit()
+    await db.refresh(new_dashboard)
+
+    return ImportTemplateResponse(
+        id=new_dashboard.id,
+        name=new_dashboard.name,
+        message="看板创建成功",
+    )
 
 
 # ── Auto-generate (must be before /{id} to avoid routing conflict) ────────────

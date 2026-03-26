@@ -28,6 +28,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import ChartWidget from '../components/ChartWidget'
 import { dashboardApi, datasetsApi, queryApi } from '../services/api'
+import { templateApi } from '../services/templateApi'
+import type { TemplateOut } from '../types/template'
 import { useAuthStore } from '../stores/authStore'
 import { useChatStore, type RecentQuery } from '../stores/chatStore'
 import { useThemeStore } from '../stores/themeStore'
@@ -82,6 +84,15 @@ const INJECTED_STYLES = `
 .db-ball-fast { offset-path: path('M24,56 C24,24 56,8 80,40 C104,72 136,56 136,56 C136,56 136,88 112,72 C88,40 56,56 24,56 Z'); offset-rotate: 0deg; animation: db-ball 0.7s ease-in-out infinite, db-glow 0.7s ease-in-out infinite; }
 .db-trail-anim { animation: db-trail 2.5s linear infinite; }
 .db-trail-fast { animation: db-trail 0.7s linear infinite; }
+.import-template-modal .ant-modal-content { background: rgba(26,29,46,0.95); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid rgba(162,155,254,0.1); border-radius: 20px; padding: 0; }
+.import-template-modal .ant-modal-header { background: transparent; border: none; padding: 0; }
+.import-template-modal .ant-modal-body { padding: 0; }
+[data-theme="light"] .import-template-modal .ant-modal-content { background: rgba(255,255,255,0.96); border: 1px solid rgba(108,92,231,0.1); }
+.tpl-card { padding: 14px 12px; border-radius: 14px; border: 2px solid transparent; background: rgba(26,29,46,0.3); cursor: pointer; transition: all 0.15s; text-align: center; }
+.tpl-card:hover { border-color: rgba(162,155,254,0.25); }
+.tpl-card.selected { border-color: #6C5CE7; background: rgba(108,92,231,0.08); }
+[data-theme="light"] .tpl-card { background: rgba(244,243,255,0.5); }
+[data-theme="light"] .tpl-card.selected { background: rgba(108,92,231,0.06); }
 `
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1488,6 +1499,14 @@ export default function DashboardPage() {
   const [pendingFilters, setPendingFilters] = useState<Record<string, string>>({})
   const [appliedFilters, setAppliedFilters] = useState<Record<string, string>>({})
   const [showCreate, setShowCreate] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importStep, setImportStep] = useState<1 | 2>(1)
+  const [importTemplates, setImportTemplates] = useState<TemplateOut[]>([])
+  const [importTemplatesLoading, setImportTemplatesLoading] = useState(false)
+  const [importSelectedTemplate, setImportSelectedTemplate] = useState<TemplateOut | null>(null)
+  const [importName, setImportName] = useState('')
+  const [importDatasetId, setImportDatasetId] = useState<string | undefined>(undefined)
+  const [importLoading, setImportLoading] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [showAddChart, setShowAddChart] = useState(false)
   const [showRename, setShowRename] = useState(false)
@@ -1885,6 +1904,32 @@ export default function DashboardPage() {
               </div>
             </Tooltip>
 
+            <Tooltip title="从模板导入">
+              <div
+                style={actionBtnStyle}
+                onClick={async () => {
+                  setImportStep(1)
+                  setImportSelectedTemplate(null)
+                  setImportName('')
+                  setImportDatasetId(undefined)
+                  setShowImportModal(true)
+                  setImportTemplatesLoading(true)
+                  try {
+                    const res = await templateApi.list()
+                    setImportTemplates(res.data)
+                  } catch {
+                    message.error('加载模板失败')
+                  } finally {
+                    setImportTemplatesLoading(false)
+                  }
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4"/>
+                </svg>
+              </div>
+            </Tooltip>
+
             {canEdit && editMode && (
               <Tooltip title="添加图表">
                 <div
@@ -2158,6 +2203,170 @@ export default function DashboardPage() {
         quickInputRef={quickInputRef}
         isDark={isDark}
       />
+
+      {/* ── Import Template Modal ── */}
+      <Modal
+        title={null}
+        open={showImportModal}
+        onCancel={() => setShowImportModal(false)}
+        footer={null}
+        width={680}
+        centered
+        className="import-template-modal"
+      >
+        <div style={{ padding: '28px 28px 24px' }}>
+          {/* Header */}
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: isDark ? '#E8ECF3' : '#1A1D2E', marginBottom: 4 }}>
+              导入看板模板
+            </div>
+            <div style={{ fontSize: 12, color: '#5F6B7A' }}>
+              {importStep === 1 ? '选择一个模板作为看板蓝图' : `模板: ${importSelectedTemplate?.name} (${importSelectedTemplate?.widget_count} 个组件)`}
+            </div>
+            {/* Step indicator */}
+            <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
+              {[1, 2].map(s => (
+                <div key={s} style={{
+                  height: 3, flex: 1, borderRadius: 2,
+                  background: s <= importStep ? '#6C5CE7' : (isDark ? 'rgba(162,155,254,0.1)' : 'rgba(108,92,231,0.1)'),
+                  transition: 'background 0.2s',
+                }} />
+              ))}
+            </div>
+          </div>
+
+          {importStep === 1 ? (
+            /* Step 1: Template selection */
+            <>
+              {importTemplatesLoading ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#5F6B7A' }}>加载中…</div>
+              ) : importTemplates.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#5F6B7A' }}>暂无可用模板</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 24 }}>
+                  {importTemplates.map(tpl => (
+                    <div
+                      key={tpl.id}
+                      className={`tpl-card${importSelectedTemplate?.id === tpl.id ? ' selected' : ''}`}
+                      onClick={() => setImportSelectedTemplate(tpl)}
+                    >
+                      {/* Mini preview icon */}
+                      <div style={{
+                        width: 48, height: 36, borderRadius: 8, margin: '0 auto 10px',
+                        background: isDark ? 'rgba(108,92,231,0.15)' : 'rgba(108,92,231,0.08)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <svg width="22" height="18" viewBox="0 0 24 18" fill="none" stroke="#6C5CE7" strokeWidth="1.2">
+                          <rect x="1" y="1" width="10" height="6" rx="1.5"/>
+                          <rect x="13" y="1" width="10" height="6" rx="1.5"/>
+                          <rect x="1" y="9" width="22" height="4" rx="1.5"/>
+                          <rect x="1" y="15" width="10" height="2" rx="1"/>
+                          <rect x="13" y="15" width="10" height="2" rx="1"/>
+                        </svg>
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: isDark ? '#C8CDD8' : '#2D3142', marginBottom: 4, lineHeight: 1.3 }}>
+                        {tpl.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#5F6B7A' }}>{tpl.widget_count} 个组件</div>
+                      {importSelectedTemplate?.id === tpl.id && (
+                        <div style={{ marginTop: 6, fontSize: 10, color: '#A29BFE' }}>● 已选中</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button onClick={() => setShowImportModal(false)} style={{
+                  padding: '9px 20px', borderRadius: 10, border: '1px solid rgba(162,155,254,0.15)',
+                  background: 'transparent', color: '#9CA3B4', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                }}>取消</button>
+                <button
+                  disabled={!importSelectedTemplate}
+                  onClick={() => {
+                    setImportName(importSelectedTemplate?.name ?? '')
+                    setImportStep(2)
+                  }}
+                  style={{
+                    padding: '9px 22px', borderRadius: 10, border: 'none',
+                    background: importSelectedTemplate ? 'linear-gradient(135deg,#6C5CE7,#A29BFE)' : 'rgba(108,92,231,0.3)',
+                    color: '#fff', fontSize: 13, cursor: importSelectedTemplate ? 'pointer' : 'not-allowed',
+                    fontFamily: 'inherit', fontWeight: 500,
+                  }}
+                >下一步 →</button>
+              </div>
+            </>
+          ) : (
+            /* Step 2: Name + dataset */
+            <>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: '#9CA3B4', marginBottom: 6 }}>看板名称</div>
+                <input
+                  value={importName}
+                  onChange={e => setImportName(e.target.value)}
+                  placeholder="输入看板名称"
+                  style={{
+                    width: '100%', padding: '9px 12px', borderRadius: 10,
+                    border: `1px solid ${isDark ? 'rgba(162,155,254,0.12)' : 'rgba(108,92,231,0.15)'}`,
+                    background: isDark ? 'rgba(15,17,26,0.6)' : 'rgba(248,249,252,0.9)',
+                    color: isDark ? '#E8ECF3' : '#1A1D2E',
+                    fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 11, color: '#9CA3B4', marginBottom: 6 }}>关联数据集 <span style={{ color: '#5F6B7A' }}>(可选)</span></div>
+                <Select
+                  value={importDatasetId}
+                  onChange={setImportDatasetId}
+                  allowClear
+                  placeholder="选择数据集（如模板 SQL 中使用了 {table}）"
+                  style={{ width: '100%' }}
+                  options={datasets.map(d => ({ value: d.id, label: d.name }))}
+                />
+                <div style={{ fontSize: 11, color: '#5F6B7A', marginTop: 6 }}>
+                  如果模板 SQL 中使用了 {'{table}'}，需要选择数据集来替换占位符
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button onClick={() => setImportStep(1)} style={{
+                  padding: '9px 20px', borderRadius: 10, border: '1px solid rgba(162,155,254,0.15)',
+                  background: 'transparent', color: '#9CA3B4', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                }}>← 上一步</button>
+                <button
+                  disabled={importLoading || !importName.trim()}
+                  onClick={async () => {
+                    if (!importSelectedTemplate || !importName.trim()) return
+                    setImportLoading(true)
+                    try {
+                      const res = await dashboardApi.importTemplate({
+                        template_id: importSelectedTemplate.id,
+                        dataset_id: importDatasetId,
+                        name: importName.trim(),
+                      })
+                      message.success('看板创建成功')
+                      setShowImportModal(false)
+                      const listRes = await dashboardApi.list()
+                      setDashboards(listRes.data)
+                      await loadDashboard(res.data.id)
+                    } catch {
+                      message.error('创建失败，请重试')
+                    } finally {
+                      setImportLoading(false)
+                    }
+                  }}
+                  style={{
+                    padding: '9px 22px', borderRadius: 10, border: 'none',
+                    background: (!importLoading && importName.trim()) ? 'linear-gradient(135deg,#6C5CE7,#A29BFE)' : 'rgba(108,92,231,0.3)',
+                    color: '#fff', fontSize: 13,
+                    cursor: (!importLoading && importName.trim()) ? 'pointer' : 'not-allowed',
+                    fontFamily: 'inherit', fontWeight: 500,
+                  }}
+                >{importLoading ? '创建中…' : '创建看板'}</button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
 
       {/* ── Modals ── */}
       <CreateDashboardModal

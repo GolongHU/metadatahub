@@ -76,6 +76,18 @@ class DashboardQueryResponse(BaseModel):
     widgets: Dict[str, WidgetResult]
 
 
+class ImportTemplateRequest(BaseModel):
+    template_id: uuid.UUID
+    dataset_id: Optional[uuid.UUID] = None
+    name: Optional[str] = None
+
+
+class ImportTemplateResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    message: str
+
+
 class SaveToDashboardRequest(BaseModel):
     dashboard_id: Optional[uuid.UUID] = None
     new_dashboard_name: Optional[str] = None

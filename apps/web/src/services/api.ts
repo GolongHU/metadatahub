@@ -189,6 +189,8 @@ export const dashboardApi = {
     api.post(`/dashboards/${id}/widgets`, widget),
   removeWidget: (id: string, widgetId: string) =>
     api.delete(`/dashboards/${id}/widgets/${widgetId}`),
+  importTemplate: (body: { template_id: string; dataset_id?: string; name?: string }) =>
+    api.post<{ id: string; name: string; message: string }>('/dashboards/import-template', body),
 }
 
 export const adminApi = {
