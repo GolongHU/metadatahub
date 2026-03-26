@@ -240,17 +240,55 @@ async def import_template(
     config = copy.deepcopy(template.config or {})
 
     # Resolve duckdb table name and substitute {table}
+    resolved_table_name = ""
     if body.dataset_id is not None:
         ds_result = await db.execute(
             select(Dataset).where(Dataset.id == body.dataset_id)
         )
         dataset = ds_result.scalars().first()
         if dataset:
-            table_name = getattr(dataset, "duckdb_table_name", None) or f"dataset_{dataset.id.hex}"
+            resolved_table_name = getattr(dataset, "duckdb_table_name", None) or f"dataset_{dataset.id.hex}"
             for widget in config.get("widgets", []):
                 widget_cfg = widget.get("config", {})
                 if "query" in widget_cfg:
-                    widget_cfg["query"] = widget_cfg["query"].replace("{table}", f'"{table_name}"')
+                    widget_cfg["query"] = widget_cfg["query"].replace("{table}", f'"{resolved_table_name}"')
+
+    # ── Normalize template widget format → dashboard widget format ──────────────
+    # Template:  widget.config.query, type="kpi_card"/"bar_chart"/...
+    # Dashboard: widget.query (top-level), type="kpi"/"chart" + chart_type
+    _TEMPLATE_TYPE_MAP: dict[str, tuple[str, str | None]] = {
+        "kpi_card":       ("kpi",   None),
+        "bar_chart":      ("chart", "bar"),
+        "line_chart":     ("chart", "line"),
+        "pie_chart":      ("chart", "pie"),
+        "radar_chart":    ("chart", "bar"),
+        "ranking_table":  ("chart", "table"),
+        "alert_list":     ("chart", "table"),
+        "action_items":   ("chart", "table"),
+    }
+    for widget in config.get("widgets", []):
+        widget_cfg = widget.get("config", {})
+        # Hoist query from config.query → widget.query
+        if "query" not in widget and "query" in widget_cfg:
+            widget["query"] = widget_cfg["query"]
+        # Normalize type
+        raw_type = widget.get("type", "")
+        if raw_type in _TEMPLATE_TYPE_MAP:
+            norm_type, chart_type = _TEMPLATE_TYPE_MAP[raw_type]
+            widget["type"] = norm_type
+            if chart_type and "chart_type" not in widget:
+                widget["chart_type"] = chart_type
+        # Normalize position keys (col_span → width, row_span → height)
+        pos = widget.get("position", {})
+        if "col_span" in pos and "width" not in pos:
+            pos["width"] = pos.pop("col_span")
+        if "row_span" in pos and "height" not in pos:
+            pos["height"] = pos.pop("row_span")
+
+    # Set top-level table_name so query_dashboard can use it for RLS/filter injection
+    config["table_name"] = resolved_table_name
+    if body.dataset_id is not None:
+        config["dataset_id"] = str(body.dataset_id)
 
     dashboard_name = (body.name or "").strip() or template.name
     user_id = current_user.user_id if isinstance(current_user.user_id, uuid.UUID) else uuid.UUID(str(current_user.user_id))
