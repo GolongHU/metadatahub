@@ -1542,6 +1542,10 @@ export default function DashboardPage() {
   const submitQuickQuery = (q: string) => {
     if (!q.trim() || !selectedDashboard) return
     const datasetId = selectedDashboard.dataset_id ?? ''
+    if (!datasetId) {
+      message.warning('当前看板未关联数据集，无法使用 AI 查询')
+      return
+    }
     startTransition(q, datasetId)
 
     // t=600ms: card fly-out done → show Möbius loader
@@ -1570,7 +1574,9 @@ export default function DashboardPage() {
           }, 150)
         })
         .catch((err) => {
-          setTransitionError(err?.response?.data?.detail ?? '查询失败')
+          const detail = err?.response?.data?.detail
+          const msg = typeof detail === 'string' ? detail : (Array.isArray(detail) ? '请求参数错误' : '查询失败')
+          setTransitionError(msg)
         })
     }, 700)
   }
