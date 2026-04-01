@@ -5,7 +5,7 @@ import { useViewStore } from '../stores/useViewStore'
 
 export default function TransitionOverlay() {
   const navigate = useNavigate()
-  const { viewState, result, pendingQuery, reset } = useViewStore()
+  const { viewState, result, pendingQuery, reset, keepResultForChat } = useViewStore()
 
   if (viewState === 'dashboard' || viewState === 'returning') return null
 
@@ -134,8 +134,8 @@ export default function TransitionOverlay() {
             </button>
             <button
               onClick={() => {
+                keepResultForChat()   // preserve result for ChatPage, trigger return animation
                 navigate(`/chat?q=${encodeURIComponent(pendingQuery)}&dataset_id=${result.dataset_id}`)
-                reset()
               }}
               style={{
                 background:   'linear-gradient(135deg, #6C5CE7 0%, #A29BFE 100%)',

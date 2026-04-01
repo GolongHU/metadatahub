@@ -1556,15 +1556,16 @@ export default function DashboardPage() {
       queryApi
         .ask(q, datasetId)
         .then((res) => {
-          const { sql, chart_type, data: qd } = res.data
+          const { sql, explanation, chart_type, data: qd } = res.data
           // API done → Möbius explodes + particles burst
           setExploding({
-            query:      q,
-            chartType:  chart_type as import('../types').ChartType,
-            columns:    qd.columns,
-            rows:       qd.rows,
+            query:       q,
+            chartType:   chart_type as import('../types').ChartType,
+            columns:     qd.columns,
+            rows:        qd.rows,
             sql,
-            dataset_id: datasetId as string,
+            dataset_id:  datasetId as string,
+            explanation: explanation ?? '',
           })
           // +150ms: chart blur-to-clear reveal (faster after explode)
           setTimeout(() => {

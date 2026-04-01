@@ -15,6 +15,7 @@ import { dashboardApi, datasetsApi, queryApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { useChatStore } from '../stores/chatStore'
 import { useThemeStore } from '../stores/themeStore'
+import { useViewStore } from '../stores/useViewStore'
 import type {
   ChatMessage,
   ChartType,
@@ -755,6 +756,7 @@ export default function ChatPage() {
   const { user }              = useAuthStore()
   const { addQuery }          = useChatStore()
   const { theme }             = useThemeStore()
+  const { result: seedResult, reset: clearSeedResult } = useViewStore()
   const isDark                = theme === 'dark'
   const scopeText             = computeScopeText(user)
 
@@ -776,12 +778,28 @@ export default function ChatPage() {
       .then((res) => {
         setDatasets(res.data)
         setDatasetsLoading(false)
-        // Auto-submit ?q= (from dashboard quick input)
         if (initQ && !autoQueryRef.current) {
           autoQueryRef.current = true
           const dsId = initDatasetId ?? res.data[0]?.id
-          if (dsId) {
-            setSelectedDatasetId(dsId)
+          if (!dsId) return
+          setSelectedDatasetId(dsId)
+
+          // If coming from dashboard with a pre-fetched result, reuse it — no extra API call
+          if (seedResult && seedResult.query === initQ && seedResult.dataset_id === dsId) {
+            const userMsg:  ChatMessage = { id: genId(), role: 'user',      content: initQ }
+            const assistantMsg: ChatMessage = {
+              id:         genId(),
+              role:       'assistant',
+              content:    seedResult.explanation || initQ,
+              sql:        seedResult.sql,
+              explanation: seedResult.explanation || '',
+              chart_type: seedResult.chartType as ChartType,
+              data:       { columns: seedResult.columns, rows: seedResult.rows, row_count: seedResult.rows.length, execution_time_ms: 0 },
+              dataset_id: dsId,
+            }
+            setMessages([userMsg, assistantMsg])
+            clearSeedResult()
+          } else {
             setTimeout(() => sendMessageWithId(initQ, dsId), 120)
           }
         }
