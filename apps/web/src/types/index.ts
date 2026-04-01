@@ -308,3 +308,33 @@ export interface ChatMessage {
   loading?: boolean
   error?: string
 }
+
+// ── Conversation history ───────────────────────────────────────────────────
+
+export interface ConversationListItem {
+  id: string
+  dataset_id: string | null
+  title: string
+  message_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ConversationMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  query_sql: string | null
+  chart_type: string | null
+  data: QueryData | null
+  created_at: string
+}
+
+export interface ConversationDetail {
+  id: string
+  dataset_id: string | null
+  title: string
+  messages: ConversationMessage[]
+  created_at: string
+  updated_at: string
+}

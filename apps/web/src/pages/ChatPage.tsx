@@ -1,7 +1,11 @@
 import {
+  ClockCircleOutlined,
   CodeOutlined,
+  DeleteOutlined,
   DownOutlined,
   LockOutlined,
+  MessageOutlined,
+  PlusOutlined,
   PushpinOutlined,
   TableOutlined,
   UploadOutlined,
@@ -11,7 +15,7 @@ import { Collapse, Input, Modal, Select, Skeleton, message } from 'antd'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import ChartWidget from '../components/ChartWidget'
-import { dashboardApi, datasetsApi, queryApi } from '../services/api'
+import { conversationApi, dashboardApi, datasetsApi, queryApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { useChatStore } from '../stores/chatStore'
 import { useThemeStore } from '../stores/themeStore'
@@ -20,6 +24,7 @@ import type {
   ChatMessage,
   ChartType,
   ColumnInfo,
+  ConversationListItem,
   DashboardListItem,
   Dataset,
   User,
@@ -768,8 +773,44 @@ export default function ChatPage() {
   const [suggestions,       setSuggestions]       = useState<string[]>([])
   const [saveTarget,        setSaveTarget]        = useState<ChatMessage | null>(null)
 
+  // ── Conversation history ───────────────────────────────────────────────
+  const [historyOpen,      setHistoryOpen]      = useState(false)
+  const [conversations,    setConversations]    = useState<ConversationListItem[]>([])
+  const [currentConvId,    setCurrentConvId]    = useState<string | null>(null)
+  const [historyLoading,   setHistoryLoading]   = useState(false)
+
   const bottomRef     = useRef<HTMLDivElement>(null)
   const autoQueryRef  = useRef(false)
+
+  // ── Load conversation list ────────────────────────────────────────────────
+  const loadConversations = useCallback(async () => {
+    setHistoryLoading(true)
+    try {
+      const res = await conversationApi.list()
+      setConversations(res.data)
+    } catch { /* ignore */ } finally {
+      setHistoryLoading(false)
+    }
+  }, [])
+
+  // Load a specific conversation into the chat
+  const loadConversation = useCallback(async (convId: string, datasetId: string | null) => {
+    try {
+      const res = await conversationApi.get(convId)
+      setCurrentConvId(convId)
+      if (datasetId) setSelectedDatasetId(datasetId)
+      setMessages(res.data.messages.map((m) => ({
+        id:         m.id,
+        role:       m.role as 'user' | 'assistant',
+        content:    m.content,
+        sql:        m.query_sql ?? undefined,
+        chart_type: (m.chart_type ?? undefined) as ChartType | undefined,
+        data:       m.data ? { ...m.data, execution_time_ms: 0 } : undefined,
+        dataset_id: datasetId ?? undefined,
+      })))
+      setHistoryOpen(false)
+    } catch { message.error('加载对话失败') }
+  }, [])
 
   // Load datasets
   useEffect(() => {
@@ -848,6 +889,25 @@ export default function ChatPage() {
         row_count:  data.row_count,
         created_at: new Date().toISOString(),
       })
+
+      // Save to conversation history (fire-and-forget)
+      const saveMessages = [
+        { role: 'user', content: question },
+        { role: 'assistant', content: explanation, query_sql: sql, chart_type, data },
+      ]
+      if (currentConvId) {
+        conversationApi.addMessages(currentConvId, saveMessages)
+          .then(() => loadConversations())
+          .catch(() => {})
+      } else {
+        conversationApi.create({ dataset_id: dsId, title: question.slice(0, 80) })
+          .then((r) => {
+            setCurrentConvId(r.data.id)
+            return conversationApi.addMessages(r.data.id, saveMessages)
+          })
+          .then(() => loadConversations())
+          .catch(() => {})
+      }
     } catch (err: unknown) {
       const detail =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? '查询失败，请重试'
@@ -857,7 +917,7 @@ export default function ChatPage() {
     } finally {
       setSending(false)
     }
-  }, [sending, addQuery])
+  }, [sending, addQuery, currentConvId, loadConversations])
 
   const sendMessage = useCallback((question: string) => {
     if (!selectedDatasetId) { message.warning('请先选择一个数据集'); return }
@@ -871,6 +931,22 @@ export default function ChatPage() {
   const handleSelectDataset = (id: string) => {
     setSelectedDatasetId(id)
     setMessages([])
+    setCurrentConvId(null)
+  }
+
+  const handleNewConversation = () => {
+    setMessages([])
+    setCurrentConvId(null)
+    setHistoryOpen(false)
+  }
+
+  const handleDeleteConversation = async (convId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await conversationApi.delete(convId)
+      if (currentConvId === convId) { setMessages([]); setCurrentConvId(null) }
+      setConversations((prev) => prev.filter((c) => c.id !== convId))
+    } catch { message.error('删除失败') }
   }
 
   const selectedDataset = datasets.find((d) => d.id === selectedDatasetId)
@@ -889,6 +965,28 @@ export default function ChatPage() {
     )
   }
 
+  // ── Conversation grouping ─────────────────────────────────────────────────
+  const groupConversations = (list: ConversationListItem[]) => {
+    const now = new Date()
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const weekStart = new Date(todayStart); weekStart.setDate(weekStart.getDate() - 6)
+    const monthStart = new Date(todayStart); monthStart.setDate(monthStart.getDate() - 29)
+    const groups: { label: string; items: ConversationListItem[] }[] = [
+      { label: '今天', items: [] },
+      { label: '最近 7 天', items: [] },
+      { label: '最近 30 天', items: [] },
+      { label: '更早', items: [] },
+    ]
+    for (const c of list) {
+      const d = new Date(c.updated_at)
+      if (d >= todayStart)  groups[0].items.push(c)
+      else if (d >= weekStart)  groups[1].items.push(c)
+      else if (d >= monthStart) groups[2].items.push(c)
+      else                      groups[3].items.push(c)
+    }
+    return groups.filter((g) => g.items.length > 0)
+  }
+
   // ── State B: Chat interface ────────────────────────────────────────────────
   const topGrad = isDark
     ? 'linear-gradient(180deg, rgba(8,10,18,0.96) 0%, rgba(8,10,18,0.3) 70%, transparent 100%)'
@@ -898,8 +996,135 @@ export default function ChatPage() {
   const chipBorder = isDark ? 'rgba(162,155,254,0.14)' : 'rgba(108,92,231,0.12)'
   const chipColor  = isDark ? '#A29BFE' : '#6C5CE7'
 
+  const convGroups = groupConversations(conversations)
+
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'transparent', position: 'relative' }}>
+
+      {/* ── History sidebar backdrop ── */}
+      {historyOpen && (
+        <div
+          onClick={() => setHistoryOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 30, background: 'rgba(0,0,0,0.2)', backdropFilter: 'blur(2px)' }}
+        />
+      )}
+
+      {/* ── History sidebar panel ── */}
+      <div style={{
+        position: 'fixed', left: historyOpen ? 0 : -300, top: 0, bottom: 0, width: 280,
+        zIndex: 31,
+        background: isDark ? 'rgba(14,16,26,0.97)' : 'rgba(255,255,255,0.97)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        borderRight: isDark ? '1px solid rgba(162,155,254,0.10)' : '1px solid rgba(108,92,231,0.10)',
+        display: 'flex', flexDirection: 'column',
+        transition: 'left 0.28s cubic-bezier(0.4,0,0.2,1)',
+        boxShadow: historyOpen ? '4px 0 32px rgba(0,0,0,0.18)' : 'none',
+      }}>
+        {/* Sidebar header */}
+        <div style={{
+          padding: '18px 16px 12px',
+          borderBottom: isDark ? '1px solid rgba(162,155,254,0.06)' : '1px solid rgba(108,92,231,0.06)',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <ClockCircleOutlined style={{ color: '#A29BFE', fontSize: 14 }} />
+          <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isDark ? '#E8ECF3' : '#1A1D2E' }}>对话历史</span>
+          <button
+            onClick={handleNewConversation}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px',
+              borderRadius: 8, border: '1px solid rgba(108,92,231,0.25)',
+              background: 'rgba(108,92,231,0.10)', cursor: 'pointer',
+              fontSize: 12, color: '#A29BFE', fontWeight: 500,
+            }}
+          >
+            <PlusOutlined style={{ fontSize: 11 }} />新对话
+          </button>
+        </div>
+
+        {/* Conversation list */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
+          {historyLoading && (
+            <div style={{ padding: '20px 8px' }}>
+              {[1,2,3,4].map(i => <Skeleton key={i} active paragraph={{ rows: 1 }} style={{ marginBottom: 8 }} />)}
+            </div>
+          )}
+          {!historyLoading && convGroups.length === 0 && (
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: '#5F6B7A', fontSize: 13 }}>
+              暂无对话记录
+            </div>
+          )}
+          {convGroups.map((group) => (
+            <div key={group.label}>
+              <div style={{
+                padding: '10px 8px 4px',
+                fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
+                color: isDark ? '#5F6B7A' : '#9CA3B4',
+                textTransform: 'uppercase',
+              }}>
+                {group.label}
+              </div>
+              {group.items.map((conv) => (
+                <div
+                  key={conv.id}
+                  onClick={() => loadConversation(conv.id, conv.dataset_id)}
+                  style={{
+                    padding: '9px 10px',
+                    borderRadius: 10,
+                    marginBottom: 2,
+                    cursor: 'pointer',
+                    background: currentConvId === conv.id
+                      ? (isDark ? 'rgba(108,92,231,0.18)' : 'rgba(108,92,231,0.08)')
+                      : 'transparent',
+                    border: currentConvId === conv.id
+                      ? '1px solid rgba(108,92,231,0.22)'
+                      : '1px solid transparent',
+                    display: 'flex', alignItems: 'flex-start', gap: 8,
+                    transition: 'background 0.15s',
+                    position: 'relative',
+                  }}
+                  onMouseEnter={(e) => {
+                    const el = e.currentTarget
+                    if (currentConvId !== conv.id) el.style.background = isDark ? 'rgba(162,155,254,0.06)' : 'rgba(108,92,231,0.04)'
+                    el.querySelector<HTMLElement>('.conv-del-btn')!.style.opacity = '1'
+                  }}
+                  onMouseLeave={(e) => {
+                    const el = e.currentTarget
+                    if (currentConvId !== conv.id) el.style.background = 'transparent'
+                    el.querySelector<HTMLElement>('.conv-del-btn')!.style.opacity = '0'
+                  }}
+                >
+                  <MessageOutlined style={{ fontSize: 12, color: '#A29BFE', marginTop: 2, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 13, color: isDark ? '#D4D8E4' : '#2D3142',
+                      fontWeight: currentConvId === conv.id ? 500 : 400,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {conv.title}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#5F6B7A', marginTop: 2 }}>
+                      {conv.message_count} 条消息 · {new Date(conv.updated_at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}
+                    </div>
+                  </div>
+                  <button
+                    className="conv-del-btn"
+                    onClick={(e) => handleDeleteConversation(conv.id, e)}
+                    style={{
+                      opacity: 0, transition: 'opacity 0.15s',
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: '#5F6B7A', padding: '2px 4px', borderRadius: 6,
+                      fontSize: 13, flexShrink: 0,
+                    }}
+                  >
+                    <DeleteOutlined />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* ── Top gradient bar ── */}
       <div style={{
@@ -958,6 +1183,26 @@ export default function ChatPage() {
             数据范围: {scopeText}
           </span>
         )}
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* History toggle button */}
+        <button
+          onClick={() => { setHistoryOpen((v) => !v); if (!historyOpen) loadConversations() }}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '5px 12px', borderRadius: 20,
+            background: historyOpen ? (isDark ? 'rgba(108,92,231,0.22)' : 'rgba(108,92,231,0.12)') : chipBg,
+            border: `1px solid ${historyOpen ? 'rgba(108,92,231,0.4)' : chipBorder}`,
+            cursor: 'pointer', pointerEvents: 'all',
+            fontSize: 13, color: chipColor, fontWeight: 500,
+            transition: 'all 0.2s',
+          }}
+        >
+          <ClockCircleOutlined style={{ fontSize: 13 }} />
+          历史对话
+        </button>
       </div>
 
       {/* ── Messages area ── */}

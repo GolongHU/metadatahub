@@ -73,7 +73,7 @@ app.add_middleware(
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-from app.api import admin, ai_admin, auth, config, dashboards, datasets, health, partner, query, templates  # noqa: E402
+from app.api import admin, ai_admin, auth, config, conversations, dashboards, datasets, health, partner, query, templates  # noqa: E402
 from app.models import dashboard as _dashboard_model  # noqa: F401  ensure model is registered
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
@@ -87,6 +87,7 @@ app.include_router(config.router, prefix="/api/v1")
 app.include_router(ai_admin.router, prefix="/api/v1")
 app.include_router(partner.router, prefix="/api/v1")
 app.include_router(templates.router, prefix="/api/v1")
+app.include_router(conversations.router, prefix="/api/v1")
 
 # Serve uploaded branding assets (logos, favicons)
 os.makedirs(settings.upload_dir, exist_ok=True)

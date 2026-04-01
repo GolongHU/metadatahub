@@ -79,6 +79,8 @@ import type {
   AIProviderOut,
   AIProviderUpdate,
   AskResponse,
+  ConversationDetail,
+  ConversationListItem,
   CreateAccessRequest,
   CreateRlsRuleRequest,
   CreateUserRequest,
@@ -191,6 +193,18 @@ export const dashboardApi = {
     api.delete(`/dashboards/${id}/widgets/${widgetId}`),
   importTemplate: (body: { template_id: string; dataset_id?: string; name?: string }) =>
     api.post<{ id: string; name: string; message: string }>('/dashboards/import-template', body),
+}
+
+export const conversationApi = {
+  list: (dataset_id?: string) =>
+    api.get<ConversationListItem[]>('/conversations', { params: dataset_id ? { dataset_id } : {} }),
+  get: (id: string) => api.get<ConversationDetail>(`/conversations/${id}`),
+  create: (data: { dataset_id?: string; title: string }) =>
+    api.post<ConversationDetail>('/conversations', data),
+  addMessages: (id: string, messages: Array<{
+    role: string; content: string; query_sql?: string; chart_type?: string; data?: unknown
+  }>) => api.post(`/conversations/${id}/messages`, { messages }),
+  delete: (id: string) => api.delete(`/conversations/${id}`),
 }
 
 export const adminApi = {
