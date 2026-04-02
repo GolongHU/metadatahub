@@ -778,6 +778,7 @@ export default function ChatPage() {
   const [conversations,    setConversations]    = useState<ConversationListItem[]>([])
   const [currentConvId,    setCurrentConvId]    = useState<string | null>(null)
   const [historyLoading,   setHistoryLoading]   = useState(false)
+  const currentConvIdRef = useRef<string | null>(null)  // stable ref to avoid stale closure
 
   const bottomRef     = useRef<HTMLDivElement>(null)
   const autoQueryRef  = useRef(false)
@@ -797,7 +798,7 @@ export default function ChatPage() {
   const loadConversation = useCallback(async (convId: string, datasetId: string | null) => {
     try {
       const res = await conversationApi.get(convId)
-      setCurrentConvId(convId)
+      _setCurrentConvId(convId)
       if (datasetId) setSelectedDatasetId(datasetId)
       setMessages(res.data.messages.map((m) => ({
         id:         m.id,
@@ -890,19 +891,21 @@ export default function ChatPage() {
         created_at: new Date().toISOString(),
       })
 
-      // Save to conversation history (fire-and-forget)
+      // Save to conversation history (fire-and-forget, use ref to avoid stale closure)
       const saveMessages = [
         { role: 'user', content: question },
-        { role: 'assistant', content: explanation, query_sql: sql, chart_type, data },
+        { role: 'assistant', content: explanation, query_sql: sql, chart_type,
+          data: data ? { columns: data.columns, rows: data.rows.slice(0, 200), row_count: data.row_count } : undefined },
       ]
-      if (currentConvId) {
-        conversationApi.addMessages(currentConvId, saveMessages)
+      const convId = currentConvIdRef.current
+      if (convId) {
+        conversationApi.addMessages(convId, saveMessages)
           .then(() => loadConversations())
           .catch(() => {})
       } else {
         conversationApi.create({ dataset_id: dsId, title: question.slice(0, 80) })
           .then((r) => {
-            setCurrentConvId(r.data.id)
+            _setCurrentConvId(r.data.id)
             return conversationApi.addMessages(r.data.id, saveMessages)
           })
           .then(() => loadConversations())
@@ -917,7 +920,7 @@ export default function ChatPage() {
     } finally {
       setSending(false)
     }
-  }, [sending, addQuery, currentConvId, loadConversations])
+  }, [sending, addQuery, loadConversations])
 
   const sendMessage = useCallback((question: string) => {
     if (!selectedDatasetId) { message.warning('请先选择一个数据集'); return }
@@ -928,15 +931,21 @@ export default function ChatPage() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(inputValue) }
   }
 
+  // Keep ref in sync with state
+  const _setCurrentConvId = (id: string | null) => {
+    currentConvIdRef.current = id
+    setCurrentConvId(id)
+  }
+
   const handleSelectDataset = (id: string) => {
     setSelectedDatasetId(id)
     setMessages([])
-    setCurrentConvId(null)
+    _setCurrentConvId(null)
   }
 
   const handleNewConversation = () => {
     setMessages([])
-    setCurrentConvId(null)
+    _setCurrentConvId(null)
     setHistoryOpen(false)
   }
 
@@ -1011,7 +1020,7 @@ export default function ChatPage() {
 
       {/* ── History sidebar panel ── */}
       <div style={{
-        position: 'fixed', left: historyOpen ? 0 : -300, top: 0, bottom: 0, width: 280,
+        position: 'fixed', left: historyOpen ? 64 : -300, top: 0, bottom: 0, width: 280,
         zIndex: 31,
         background: isDark ? 'rgba(14,16,26,0.97)' : 'rgba(255,255,255,0.97)',
         backdropFilter: 'blur(24px)',
