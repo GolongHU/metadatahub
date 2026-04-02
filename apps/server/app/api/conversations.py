@@ -45,7 +45,7 @@ async def list_conversations(
             ChatConversation.updated_at,
             msg_count_subq.label("message_count"),
         )
-        .where(ChatConversation.user_id == current_user.id)
+        .where(ChatConversation.user_id == current_user.user_id)
         .order_by(ChatConversation.updated_at.desc())
         .limit(50)
     )
@@ -77,7 +77,7 @@ async def create_conversation(
 ) -> ConversationDetail:
     """Create a new conversation and return it with an empty message list."""
     conv = ChatConversation(
-        user_id=current_user.id,
+        user_id=current_user.user_id,
         dataset_id=body.dataset_id,
         title=body.title,
     )
@@ -108,7 +108,7 @@ async def get_conversation(
     )
     conv = conv_result.scalar_one_or_none()
 
-    if conv is None or conv.user_id != current_user.id:
+    if conv is None or conv.user_id != current_user.user_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"detail": "Conversation not found", "code": "CONVERSATION_NOT_FOUND"},
@@ -155,7 +155,7 @@ async def add_messages(
     )
     conv = conv_result.scalar_one_or_none()
 
-    if conv is None or conv.user_id != current_user.id:
+    if conv is None or conv.user_id != current_user.user_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"detail": "Conversation not found", "code": "CONVERSATION_NOT_FOUND"},
@@ -195,7 +195,7 @@ async def delete_conversation(
     )
     conv = conv_result.scalar_one_or_none()
 
-    if conv is None or conv.user_id != current_user.id:
+    if conv is None or conv.user_id != current_user.user_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"detail": "Conversation not found", "code": "CONVERSATION_NOT_FOUND"},
