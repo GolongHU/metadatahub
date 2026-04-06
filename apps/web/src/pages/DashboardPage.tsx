@@ -1632,6 +1632,10 @@ export default function DashboardPage() {
   }
 
   const handleAutoGenerate = async (datasetId: string) => {
+    if (!datasetId) {
+      message.warning('此看板未关联数据集，请先在右上角选择数据集生成看板')
+      return
+    }
     setGenerating(true)
     try {
       await dashboardApi.autoGenerate(datasetId)
@@ -2100,7 +2104,7 @@ export default function DashboardPage() {
                     >
                       从对话历史添加
                     </Button>
-                    {isAdmin && (
+                    {isAdmin && selectedDashboard.dataset_id && (
                       <Button
                         icon={<ReloadOutlined />}
                         onClick={() => handleAutoGenerate(selectedDashboard.dataset_id ?? '')}
