@@ -26,6 +26,7 @@ services:
     image: redis:7-alpine
     container_name: mh_redis
     restart: unless-stopped
+    command: redis-server --appendonly yes --appendfsync everysec
     volumes:
       - mh_redisdata:/data
     networks: [mhnet]

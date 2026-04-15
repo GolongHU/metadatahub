@@ -96,7 +96,7 @@ def _load_into_duckdb(
     if suffix in (".xlsx", ".xls"):
         # Read with openpyxl then INSERT via DuckDB
         import openpyxl
-        wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
+        wb = openpyxl.load_workbook(file_path, data_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
         wb.close()

@@ -82,7 +82,7 @@ def _safe_min_max(values: List[Any], col_type: str) -> Tuple[Optional[Any], Opti
 
 def _read_xlsx(file_path: str) -> Tuple[List[str], List[List[Any]]]:
     import openpyxl
-    wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
+    wb = openpyxl.load_workbook(file_path, data_only=True)
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
     wb.close()

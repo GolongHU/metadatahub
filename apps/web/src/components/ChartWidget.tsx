@@ -247,13 +247,16 @@ function DataTableView({ columns, rows }: { columns: string[]; rows: unknown[][]
   })
 
   return (
-    <Table
-      columns={antColumns}
-      dataSource={dataSource}
-      pagination={{ pageSize: 10, size: 'small', showSizeChanger: false }}
-      size="small"
-      scroll={{ x: true }}
-    />
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      <Table
+        columns={antColumns}
+        dataSource={dataSource}
+        pagination={{ pageSize: 10, size: 'small', showSizeChanger: false, style: { marginBottom: 0 } }}
+        size="small"
+        scroll={{ x: true, y: 220 }}
+        style={{ flex: 1, minHeight: 0 }}
+      />
+    </div>
   )
 }
 

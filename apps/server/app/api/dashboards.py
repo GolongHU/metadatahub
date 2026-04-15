@@ -29,7 +29,10 @@ from app.schemas.dashboard import (
     WidgetResult,
 )
 from app.schemas.dataset import DatasetSchema
-from app.services.dashboard_generator import generate_dashboard_config
+from app.services.dashboard_generator import generate_dashboard_config, generate_smart_dashboard, generate_from_plan
+from app.services.data_profiler import profile_dataset
+from app.services.data_interpreter import interpret_dataset
+from app.services.data_analyst import propose_analysis
 from app.services.permission_resolver import PermissionResolver
 from app.services.query_executor import execute_query
 
@@ -285,6 +288,29 @@ async def import_template(
         if "row_span" in pos and "height" not in pos:
             pos["height"] = pos.pop("row_span")
 
+    # Re-pack widget positions into a 6-column grid by original row order.
+    # Template editor stores all widgets at col=0 with sequential rows,
+    # relying on CSS auto-flow for visual layout. We need to compute actual
+    # col/row positions so the dashboard renderer groups them correctly.
+    GRID_COLS = 6
+    widgets_sorted = sorted(config.get("widgets", []), key=lambda w: w.get("position", {}).get("row", 0))
+    virtual_row = 0
+    current_col = 0
+    for widget in widgets_sorted:
+        pos = widget.get("position", {})
+        width = pos.get("width", 3)
+        if width > GRID_COLS:
+            width = GRID_COLS
+        if current_col + width > GRID_COLS:
+            virtual_row += 1
+            current_col = 0
+        pos["row"] = virtual_row
+        pos["col"] = current_col
+        current_col += width
+        if current_col >= GRID_COLS:
+            virtual_row += 1
+            current_col = 0
+
     # Set top-level table_name so query_dashboard can use it for RLS/filter injection
     config["table_name"] = resolved_table_name
     if body.dataset_id is not None:
@@ -329,15 +355,127 @@ async def auto_generate_dashboard(
     if dataset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
 
-    schema = DatasetSchema(**dataset.schema_info)
     table_name = f"dataset_{dataset.id.hex}"
+    schema_info = dataset.schema_info or {}
+    schema_fields = schema_info.get("columns", [])
 
-    config = generate_dashboard_config(
-        dataset_name=dataset.name,
-        dataset_id=str(dataset.id),
-        schema=schema,
-        table_name=table_name,
-    )
+    # ── Step 1: 尝试读取缓存的 AI 解读 ──────────────────────────────────────
+    from app.services.data_interpreter import DataInterpretation, FieldSemantic, KpiSpec, ChartSpec
+
+    interpretation = None
+    if dataset.ai_interpretation:
+        try:
+            raw = dataset.ai_interpretation
+            interpretation = DataInterpretation(
+                business_domain=raw.get("business_domain", ""),
+                table_purpose=raw.get("table_purpose", ""),
+                narrative_mode=raw.get("narrative_mode", "mixed"),
+                narrative_reason=raw.get("narrative_reason", ""),
+                key_questions=raw.get("key_questions", []),
+                key_insights=raw.get("key_insights", []),
+                fields_semantic=[
+                    FieldSemantic(**f) for f in raw.get("fields_semantic", [])
+                ],
+                recommended_kpis=[
+                    KpiSpec(**k) for k in raw.get("recommended_kpis", [])
+                ],
+                recommended_charts=[
+                    ChartSpec(**c) for c in raw.get("recommended_charts", [])
+                ],
+                color_mapping=raw.get("color_mapping", {}),
+                time_field=raw.get("time_field"),
+            )
+        except Exception:
+            interpretation = None
+
+    # ── Step 2: 无缓存 → 做画像 + AI 理解 ───────────────────────────────────
+    if interpretation is None:
+        try:
+            profile = await profile_dataset(
+                dataset_id=str(body.dataset_id),
+                table_name=table_name,
+                schema_fields=schema_fields,
+            )
+
+            # 获取样本数据
+            import asyncio
+            from concurrent.futures import ThreadPoolExecutor
+            from functools import partial
+            from app.database import get_duckdb
+
+            def _fetch_samples():
+                conn = get_duckdb()
+                rows = conn.execute(f'SELECT * FROM "{table_name}" LIMIT 20').fetchall()
+                cols = [d[0] for d in conn.description] if rows else []
+                return [dict(zip(cols, r)) for r in rows]
+
+            with ThreadPoolExecutor(max_workers=1) as ex:
+                sample_rows = await asyncio.get_event_loop().run_in_executor(ex, _fetch_samples)
+
+            interpretation = await interpret_dataset(profile, dataset.name, sample_rows, db)
+
+            # 缓存到 datasets 表
+            cache_dict = {
+                "business_domain": interpretation.business_domain,
+                "table_purpose": interpretation.table_purpose,
+                "narrative_mode": interpretation.narrative_mode,
+                "narrative_reason": interpretation.narrative_reason,
+                "key_questions": interpretation.key_questions,
+                "key_insights": interpretation.key_insights,
+                "fields_semantic": [
+                    {"name": f.name, "chinese_name": f.chinese_name,
+                     "semantic_role": f.semantic_role, "business_meaning": f.business_meaning,
+                     "importance": f.importance, "format_hint": f.format_hint}
+                    for f in interpretation.fields_semantic
+                ],
+                "recommended_kpis": [
+                    {"title": k.title, "field": k.field, "aggregation": k.aggregation,
+                     "filter": k.filter, "comparison": k.comparison, "format": k.format}
+                    for k in interpretation.recommended_kpis
+                ],
+                "recommended_charts": [
+                    {"purpose": c.purpose, "type": c.type, "x_field": c.x_field,
+                     "y_field": c.y_field, "group_by": c.group_by, "title": c.title}
+                    for c in interpretation.recommended_charts
+                ],
+                "color_mapping": interpretation.color_mapping,
+                "time_field": interpretation.time_field,
+            }
+            dataset.ai_interpretation = cache_dict
+        except Exception as e:
+            # AI 理解失败，降级到旧的模板匹配方式
+            schema = DatasetSchema(**schema_info)
+            config = generate_dashboard_config(
+                dataset_name=dataset.name,
+                dataset_id=str(dataset.id),
+                schema=schema,
+                table_name=table_name,
+            )
+            existing = await db.execute(
+                select(DashboardConfig).where(
+                    DashboardConfig.dataset_id == body.dataset_id,
+                    DashboardConfig.dashboard_type == "auto",
+                )
+            )
+            for old in existing.scalars().all():
+                old.is_default = False
+            user_id = current_user.user_id if isinstance(current_user.user_id, uuid.UUID) else uuid.UUID(str(current_user.user_id))
+            dashboard = DashboardConfig(
+                name=config["title"],
+                dataset_id=body.dataset_id,
+                config=config,
+                is_default=True,
+                dashboard_type="auto",
+                owner_id=user_id,
+                created_by=user_id,
+            )
+            db.add(dashboard)
+            await db.commit()
+            await db.refresh(dashboard)
+            return _to_detail(dashboard)
+
+    # ── Step 3: 基于 AI 理解生成看板 ─────────────────────────────────────────
+    config = await generate_smart_dashboard(dataset, interpretation, db)
 
     # Deactivate existing auto dashboards for this dataset
     existing = await db.execute(
@@ -351,7 +489,7 @@ async def auto_generate_dashboard(
 
     user_id = current_user.user_id if isinstance(current_user.user_id, uuid.UUID) else uuid.UUID(str(current_user.user_id))
     dashboard = DashboardConfig(
-        name=config["title"],
+        name=interpretation.business_domain or f"{dataset.name} 数据看板",
         dataset_id=body.dataset_id,
         config=config,
         is_default=True,
@@ -363,6 +501,24 @@ async def auto_generate_dashboard(
     await db.commit()
     await db.refresh(dashboard)
     return _to_detail(dashboard)
+
+
+@router.post("/datasets/{dataset_id}/reanalyze", status_code=status.HTTP_200_OK)
+async def reanalyze_dataset(
+    dataset_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """清除数据集的 AI 解读缓存，下次生成看板将重新分析。"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    result = await db.execute(select(Dataset).where(Dataset.id == dataset_id))
+    dataset = result.scalars().first()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    dataset.ai_interpretation = None
+    await db.commit()
+    return {"status": "ok", "message": "已清除缓存，下次生成看板将重新分析"}
 
 
 # ── Create personal dashboard ─────────────────────────────────────────────────
@@ -543,3 +699,131 @@ async def remove_widget(
 
     await db.commit()
     return {"message": "Widget removed"}
+
+
+# ── AI 分析师工作流 ────────────────────────────────────────────────────────────
+
+from pydantic import BaseModel as _BaseModel
+
+
+class ProposeRequest(_BaseModel):
+    dataset_id: uuid.UUID
+    user_followup: Optional[str] = None
+    previous_plan: Optional[dict] = None
+
+
+class GenerateFromPlanRequest(_BaseModel):
+    dataset_id: uuid.UUID
+    plan: dict
+    selected_angle_ids: list[str]
+
+
+@router.post("/propose")
+async def propose_dashboard(
+    body: ProposeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Step 1: AI 分析师读数据，生成分析方案（角度 + 提议 widgets）。"""
+    result = await db.execute(
+        select(Dataset).where(Dataset.id == body.dataset_id, Dataset.is_active == True)  # noqa: E712
+    )
+    dataset = result.scalars().first()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    table_name    = f"dataset_{dataset.id.hex}"
+    schema_info   = dataset.schema_info or {}
+    schema_fields = schema_info.get("columns", [])
+
+    # 数据画像
+    profile = await profile_dataset(
+        dataset_id=str(body.dataset_id),
+        table_name=table_name,
+        schema_fields=schema_fields,
+    )
+
+    # 获取样本行
+    def _fetch_samples():
+        from app.database import get_duckdb
+        conn = get_duckdb()
+        rows = conn.execute(f'SELECT * FROM "{table_name}" LIMIT 10').fetchall()
+        if not rows:
+            return []
+        desc = conn.description
+        cols = [d[0] for d in desc] if desc else []
+        return [dict(zip(cols, r)) for r in rows]
+
+    loop = asyncio.get_event_loop()
+    sample_rows = await loop.run_in_executor(_executor, _fetch_samples)
+
+    # AI 分析
+    plan = await propose_analysis(
+        profile=profile,
+        dataset_name=dataset.name,
+        sample_rows=sample_rows,
+        db=db,
+        user_followup=body.user_followup,
+        previous_plan=body.previous_plan,
+    )
+
+    return {
+        "data_understanding": plan.data_understanding,
+        "angles": [
+            {
+                "id": a.id,
+                "title": a.title,
+                "business_question": a.business_question,
+                "reasoning": a.reasoning,
+                "is_recommended": a.is_recommended,
+                "proposed_widgets": [
+                    {
+                        "title": w.title,
+                        "chart_type": w.chart_type,
+                        "purpose": w.purpose,
+                        "sql_hint": w.sql_hint,
+                        "col_span": w.col_span,
+                    }
+                    for w in a.proposed_widgets
+                ],
+            }
+            for a in plan.angles
+        ],
+    }
+
+
+@router.post("/generate-from-plan", response_model=DashboardDetail)
+async def generate_dashboard_from_plan(
+    body: GenerateFromPlanRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> DashboardDetail:
+    """Step 2: 根据用户选定的角度，AI 生成每个 widget 的 SQL，写入看板。"""
+    result = await db.execute(
+        select(Dataset).where(Dataset.id == body.dataset_id, Dataset.is_active == True)  # noqa: E712
+    )
+    dataset = result.scalars().first()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    config = await generate_from_plan(
+        dataset=dataset,
+        plan_dict=body.plan,
+        selected_angle_ids=body.selected_angle_ids,
+        db=db,
+    )
+
+    user_id = current_user.user_id if isinstance(current_user.user_id, uuid.UUID) else uuid.UUID(str(current_user.user_id))
+    dashboard = DashboardConfig(
+        name=config["title"],
+        dataset_id=body.dataset_id,
+        config=config,
+        is_default=True,
+        dashboard_type="auto",
+        owner_id=user_id,
+        created_by=user_id,
+    )
+    db.add(dashboard)
+    await db.commit()
+    await db.refresh(dashboard)
+    return _to_detail(dashboard)

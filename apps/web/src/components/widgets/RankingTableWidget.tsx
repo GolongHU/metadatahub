@@ -88,18 +88,18 @@ export default function RankingTableWidget({ config, data }: RankingTableWidgetP
   })
 
   return (
-    <div style={{ height: '100%', overflow: 'auto' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
       <Table
         columns={tableColumns}
         dataSource={dataSource}
         size="small"
         pagination={
           rows.length > pageSize
-            ? { pageSize, size: 'small', showSizeChanger: false }
+            ? { pageSize, size: 'small', showSizeChanger: false, style: { marginBottom: 0 } }
             : false
         }
-        scroll={{ x: true }}
-        style={{ '--table-row-hover-bg': 'rgba(108,92,231,0.06)' } as React.CSSProperties}
+        scroll={{ x: true, y: 220 }}
+        style={{ flex: 1, minHeight: 0, '--table-row-hover-bg': 'rgba(108,92,231,0.06)' } as React.CSSProperties}
       />
     </div>
   )

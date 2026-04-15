@@ -27,6 +27,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import ChartWidget from '../components/ChartWidget'
+import { AnalystWorkflowModal } from '../components/AnalystWorkflowModal'
 import { dashboardApi, datasetsApi, queryApi } from '../services/api'
 import { templateApi } from '../services/templateApi'
 import type { TemplateOut } from '../types/template'
@@ -1019,17 +1020,118 @@ function AiBubble({
   )
 }
 
+// ── AI Insight Panel ──────────────────────────────────────────────────────────
+
+function InsightPanel({
+  interpretation,
+  isDark,
+  datasetId,
+}: {
+  interpretation: { business_domain?: string; key_insights?: string[]; key_questions?: string[] }
+  isDark: boolean
+  datasetId: string
+}) {
+  const [open, setOpen] = useState(false)
+  const { key_insights = [], key_questions = [], business_domain = '' } = interpretation
+
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        borderRadius: 12,
+        background: isDark ? 'rgba(26,29,46,0.5)' : 'rgba(255,255,255,0.7)',
+        border: '1px solid rgba(162,155,254,0.1)',
+        backdropFilter: 'blur(12px)',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Header */}
+      <div
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '10px 16px',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#A29BFE" strokeWidth="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 16v-4M12 8h.01"/>
+        </svg>
+        <span style={{ fontSize: 12, color: '#A29BFE', fontWeight: 500 }}>
+          AI 数据洞察 — {business_domain}
+        </span>
+        <svg
+          width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#5F6B7A" strokeWidth="2"
+          style={{ marginLeft: 'auto', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
+        >
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+
+      {/* Body */}
+      {open && (
+        <div style={{ padding: '0 16px 14px', borderTop: '1px solid rgba(162,155,254,0.06)' }}>
+          {key_insights.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              {key_insights.map((insight, i) => (
+                <div key={i} style={{ fontSize: 12, color: isDark ? '#9CA3B4' : '#5F6B7A', lineHeight: 1.8 }}>
+                  · {insight}
+                </div>
+              ))}
+            </div>
+          )}
+          {key_questions.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 11, color: '#5F6B7A', marginBottom: 6 }}>建议追问的问题：</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {key_questions.map((q, i) => (
+                  <span
+                    key={i}
+                    onClick={() => {
+                      window.location.href = `/chat?q=${encodeURIComponent(q)}&dataset_id=${datasetId}`
+                    }}
+                    style={{
+                      display: 'inline-block',
+                      padding: '3px 10px',
+                      borderRadius: 12,
+                      background: 'rgba(108,92,231,0.08)',
+                      color: '#A29BFE',
+                      cursor: 'pointer',
+                      fontSize: 11,
+                      border: '1px solid rgba(162,155,254,0.12)',
+                    }}
+                  >
+                    {q} →
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Dashboard Selector Dropdown ───────────────────────────────────────────────
 
 function DashboardSelector({
   selectedDashboard,
   dashboards,
   onSelect,
+  onTogglePin,
+  isAdmin,
   isDark,
 }: {
   selectedDashboard: DashboardDetail | null
   dashboards: DashboardListItem[]
   onSelect: (id: string) => void
+  onTogglePin?: (id: string, pinned: boolean) => void
+  isAdmin?: boolean
   isDark: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -1096,7 +1198,8 @@ function DashboardSelector({
             border: '1px solid rgba(162,155,254,0.12)',
             borderRadius: 14,
             boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
-            overflow: 'hidden',
+            maxHeight: '70vh',
+            overflowY: 'auto',
             zIndex: 100,
           }}
         >
@@ -1168,6 +1271,38 @@ function DashboardSelector({
                     <span style={{ fontSize: 11, color: '#5F6B7A', flexShrink: 0 }}>
                       {d.widget_count}
                     </span>
+                    {isAdmin && onTogglePin && (
+                      <span
+                        title={d.is_pinned ? '取消固定' : '固定到顶部'}
+                        onClick={(e) => { e.stopPropagation(); onTogglePin(d.id, !d.is_pinned) }}
+                        style={{
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: 22,
+                          height: 22,
+                          borderRadius: 6,
+                          background: d.is_pinned ? 'rgba(108,92,231,0.12)' : 'transparent',
+                          color: d.is_pinned ? '#6C5CE7' : '#5F6B7A',
+                          cursor: 'pointer',
+                          transition: 'background 0.15s, color 0.15s',
+                        }}
+                        onMouseEnter={(e) => {
+                          const el = e.currentTarget as HTMLSpanElement
+                          if (!d.is_pinned) { el.style.background = 'rgba(162,155,254,0.1)'; el.style.color = '#A29BFE' }
+                        }}
+                        onMouseLeave={(e) => {
+                          const el = e.currentTarget as HTMLSpanElement
+                          if (!d.is_pinned) { el.style.background = 'transparent'; el.style.color = '#5F6B7A' }
+                        }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill={d.is_pinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="12" y1="17" x2="12" y2="22"/>
+                          <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
+                        </svg>
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1516,6 +1651,9 @@ export default function DashboardPage() {
   const [pageHovered, setPageHovered] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [showDashboardDropdown] = useState(false)
+  const [analystModalOpen, setAnalystModalOpen] = useState(false)
+  const [analystDatasetId, setAnalystDatasetId] = useState('')
+  const [analystDatasetName, setAnalystDatasetName] = useState('')
   const quickInputRef = useRef<HTMLInputElement>(null)
   const { viewState: transitionState, startTransition, setLoading: setTransitionLoading, setExploding, setRevealing, setChatResult, setError: setTransitionError, finishReturn, isDashboardFullscreen: isFullscreen, setDashboardFullscreen } = useViewStore()
   const initRef = useRef(false)
@@ -1631,11 +1769,8 @@ export default function DashboardPage() {
     }
   }
 
-  const handleAutoGenerate = async (datasetId: string) => {
-    if (!datasetId) {
-      message.warning('此看板未关联数据集，请先在右上角选择数据集生成看板')
-      return
-    }
+  const _handleAutoGenerate = async (datasetId: string) => {
+    if (!datasetId) return
     setGenerating(true)
     try {
       await dashboardApi.autoGenerate(datasetId)
@@ -1643,13 +1778,13 @@ export default function DashboardPage() {
       setDashboards(listRes.data)
       const newDash = listRes.data.find((d) => d.dataset_id === datasetId && d.dashboard_type === 'auto')
       if (newDash) await loadDashboard(newDash.id)
-      message.success('看板已生成')
     } catch {
       message.error('生成失败，请重试')
     } finally {
       setGenerating(false)
     }
   }
+  void _handleAutoGenerate
 
   const handleRemoveWidget = async (widgetId: string) => {
     if (!selectedDashboard) return
@@ -1819,6 +1954,12 @@ export default function DashboardPage() {
               selectedDashboard={selectedDashboard}
               dashboards={dashboards}
               onSelect={loadDashboard}
+              onTogglePin={async (id, pinned) => {
+                await dashboardApi.update(id, { is_pinned: pinned })
+                const listRes = await dashboardApi.list()
+                setDashboards(listRes.data)
+              }}
+              isAdmin={isAdmin}
               isDark={isDark}
             />
           </div>
@@ -1982,7 +2123,13 @@ export default function DashboardPage() {
                 placeholder="为数据集生成看板"
                 loading={generating}
                 value={null}
-                onChange={handleAutoGenerate}
+                onChange={(datasetId: string) => {
+                  const ds = datasets.find((d) => d.id === datasetId)
+                  if (!ds) return
+                  setAnalystDatasetId(datasetId)
+                  setAnalystDatasetName(ds.name)
+                  setAnalystModalOpen(true)
+                }}
                 options={datasets.map((d) => ({ value: d.id, label: d.name }))}
                 size="small"
               />
@@ -2062,7 +2209,7 @@ export default function DashboardPage() {
         )}
 
         {selectedDashboard && (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
             {/* Applied filter indicator */}
             {Object.values(appliedFilters).some(Boolean) && (
               <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -2071,6 +2218,23 @@ export default function DashboardPage() {
                 </span>
               </div>
             )}
+
+            {/* AI 洞察面板 */}
+            {(() => {
+              const interp = selectedDashboard?.config?.interpretation as {
+                business_domain?: string
+                key_insights?: string[]
+                key_questions?: string[]
+              } | undefined
+              if (!interp?.business_domain) return null
+              return (
+                <InsightPanel
+                  interpretation={interp}
+                  isDark={isDark}
+                  datasetId={selectedDashboard?.dataset_id ?? ''}
+                />
+              )
+            })()}
 
             {/* Empty dashboard state */}
             {isEmptyDashboard ? (
@@ -2107,18 +2271,22 @@ export default function DashboardPage() {
                     {isAdmin && selectedDashboard.dataset_id && (
                       <Button
                         icon={<ReloadOutlined />}
-                        onClick={() => handleAutoGenerate(selectedDashboard.dataset_id ?? '')}
-                        loading={generating}
+                        onClick={() => {
+                          const ds = datasets.find((d) => d.id === selectedDashboard.dataset_id)
+                          setAnalystDatasetId(selectedDashboard.dataset_id ?? '')
+                          setAnalystDatasetName(ds?.name ?? selectedDashboard.name)
+                          setAnalystModalOpen(true)
+                        }}
                         style={{ borderRadius: 10 }}
                       >
-                        自动生成图表
+                        AI 生成图表
                       </Button>
                     )}
                   </Space>
                 </div>
               </div>
             ) : (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {sortedRowKeys.map((rowKey, rowIdx) => {
                   const rowWidgets = widgetsByRow[rowKey].sort((a, b) => a.position.col - b.position.col)
                   const isKpiRow = rowWidgets.every((w) => w.type === 'kpi')
@@ -2134,8 +2302,7 @@ export default function DashboardPage() {
                           ? 'repeat(auto-fit, minmax(180px, 1fr))'
                           : rowWidgets.map((w) => `${w.position.width}fr`).join(' '),
                         gap: isKpiRow ? 12 : 16,
-                        flex: isKpiRow ? 'none' : 1,
-                        minHeight: isKpiRow ? undefined : 0,
+                        height: isKpiRow ? undefined : 340,
                         ...(transitionState === 'collapsing' ? {
                           animation: `card-fly-out 0.5s cubic-bezier(0.55,0,1,0.8) ${rowIdx * 80}ms both`,
                         } : transitionState === 'returning' ? {
@@ -2380,6 +2547,20 @@ export default function DashboardPage() {
       </Modal>
 
       {/* ── Modals ── */}
+      <AnalystWorkflowModal
+        open={analystModalOpen}
+        datasetId={analystDatasetId}
+        datasetName={analystDatasetName}
+        isDark={isDark}
+        onClose={() => setAnalystModalOpen(false)}
+        onSuccess={async (dashboardId) => {
+          setAnalystModalOpen(false)
+          const listRes = await dashboardApi.list()
+          setDashboards(listRes.data)
+          await loadDashboard(dashboardId)
+        }}
+      />
+
       <CreateDashboardModal
         open={showCreate}
         datasets={datasets}

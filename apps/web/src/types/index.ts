@@ -241,12 +241,19 @@ export interface DashboardFilter {
   options: string
 }
 
+export interface DashboardInterpretation {
+  business_domain?: string
+  key_insights?: string[]
+  key_questions?: string[]
+}
+
 export interface DashboardConfig {
   title: string
   dataset_id: string
   table_name: string
   filters: DashboardFilter[]
   widgets: DashboardWidget[]
+  interpretation?: DashboardInterpretation
 }
 
 export interface DashboardDetail {

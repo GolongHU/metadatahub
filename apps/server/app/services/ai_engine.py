@@ -175,13 +175,14 @@ async def _invoke(
     routing,
     system_prompt: str,
     user_content: str,
+    max_tokens_override: Optional[int] = None,
 ) -> str:
     """Dispatch to the right SDK based on provider_type."""
     from app.services.crypto import decrypt_api_key
     api_key = decrypt_api_key(provider.api_key_encrypted)
     model = routing.primary_model
     temperature = routing.temperature
-    max_tokens = routing.max_tokens
+    max_tokens = max_tokens_override or routing.max_tokens
 
     if provider.provider_type == "anthropic":
         return await _call_anthropic(api_key, model, system_prompt, user_content, temperature, max_tokens)
@@ -198,12 +199,13 @@ async def _invoke_fallback(
     routing,
     system_prompt: str,
     user_content: str,
+    max_tokens_override: Optional[int] = None,
 ) -> str:
     from app.services.crypto import decrypt_api_key
     api_key = decrypt_api_key(fallback_provider.api_key_encrypted)
     model = routing.fallback_model or ""
     temperature = routing.temperature
-    max_tokens = routing.max_tokens
+    max_tokens = max_tokens_override or routing.max_tokens
 
     if fallback_provider.provider_type == "anthropic":
         return await _call_anthropic(api_key, model, system_prompt, user_content, temperature, max_tokens)
@@ -231,15 +233,18 @@ def _get_env_client():
     return _env_client
 
 
-async def _call_env_provider(system_prompt: str, user_content: str) -> str:
+async def _call_env_provider(system_prompt: str, user_content: str, max_tokens: Optional[int] = None) -> str:
     client = _get_env_client()
-    response = await client.chat.completions.create(
+    kwargs: dict = dict(
         model=settings.ai_model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ],
     )
+    if max_tokens:
+        kwargs["max_tokens"] = max_tokens
+    response = await client.chat.completions.create(**kwargs)
     return response.choices[0].message.content or ""
 
 
@@ -302,6 +307,7 @@ async def _generate_raw(
     db: Optional[AsyncSession],
     prior_assistant: Optional[str] = None,
     prior_user: Optional[str] = None,
+    max_tokens_override: Optional[int] = None,
 ) -> str:
     """Call AI with optional DB-driven routing and fallback."""
     provider, routing = (None, None)
@@ -316,17 +322,16 @@ async def _generate_raw(
         # Build messages with optional prior turn for retry
         effective_user = user_content
         if prior_assistant and prior_user:
-            # Simulate a multi-turn by appending the correction
             effective_user = (
                 f"{prior_user}\n\n[上次回复]\n{prior_assistant}\n\n{user_content}"
             )
         try:
-            return await _invoke(provider, routing, system_prompt, effective_user)
+            return await _invoke(provider, routing, system_prompt, effective_user, max_tokens_override)
         except Exception as primary_err:
             fallback_provider = await _get_fallback(routing, db)
             if fallback_provider is not None:
                 try:
-                    return await _invoke_fallback(fallback_provider, routing, system_prompt, effective_user)
+                    return await _invoke_fallback(fallback_provider, routing, system_prompt, effective_user, max_tokens_override)
                 except Exception as fallback_err:
                     raise ValueError(
                         f"Primary error: {primary_err}; Fallback error: {fallback_err}"
@@ -339,4 +344,4 @@ async def _generate_raw(
         effective_user = (
             f"{prior_user}\n\n[上次回复]\n{prior_assistant}\n\n{user_content}"
         )
-    return await _call_env_provider(system_prompt, effective_user)
+    return await _call_env_provider(system_prompt, effective_user, max_tokens=max_tokens_override)

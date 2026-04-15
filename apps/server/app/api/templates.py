@@ -180,9 +180,9 @@ async def create_template(
         dataset_id=str(body.dataset_ids[0]) if body.dataset_ids else None,
         config=body.config.model_dump(),
         is_default=False,
-        created_by=current_user.id,
+        created_by=current_user.user_id,
         dashboard_type="template",
-        owner_id=current_user.id,
+        owner_id=current_user.user_id,
         is_pinned=False,
         sort_order=0,
         template_type=body.template_type,
@@ -269,9 +269,9 @@ async def clone_template(
         dataset_id=src.dataset_id,
         config=new_config,
         is_default=False,
-        created_by=current_user.id,
+        created_by=current_user.user_id,
         dashboard_type="template",
-        owner_id=current_user.id,
+        owner_id=current_user.user_id,
         is_pinned=False,
         sort_order=0,
         template_type="custom",
@@ -334,25 +334,8 @@ async def generate_widget_sql(
 
     sql_text = ""
     try:
-        from app.services.ai_engine import _get_routing, _call_anthropic, _call_openai_compatible
-        provider, routing = await _get_routing("nl2sql", db)
-        if provider:
-            if provider.provider_type == "anthropic":
-                sql_text = await _call_anthropic(
-                    api_key=provider.api_key,
-                    model=routing.model_name or "claude-haiku-4-5-20251001",
-                    system=SYSTEM,
-                    user_content=user_msg,
-                    max_tokens=400,
-                )
-            else:
-                sql_text = await _call_openai_compatible(
-                    api_key=provider.api_key,
-                    base_url=str(provider.base_url or ""),
-                    model=routing.model_name or "gpt-4o-mini",
-                    messages=[{"role": "system", "content": SYSTEM}, {"role": "user", "content": user_msg}],
-                    max_tokens=400,
-                )
+        from app.services.ai_engine import _generate_raw
+        sql_text = await _generate_raw(SYSTEM, user_msg, db, max_tokens_override=600)
     except Exception:
         pass
 
@@ -411,9 +394,9 @@ async def import_from_marketplace(
         dataset_id=src.dataset_id,
         config=copy.deepcopy(src.config or {}),
         is_default=False,
-        created_by=current_user.id,
+        created_by=current_user.user_id,
         dashboard_type="template",
-        owner_id=current_user.id,
+        owner_id=current_user.user_id,
         is_pinned=False,
         sort_order=0,
         template_type="marketplace",
