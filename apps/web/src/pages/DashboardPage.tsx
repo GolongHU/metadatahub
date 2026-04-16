@@ -27,6 +27,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import ChartWidget from '../components/ChartWidget'
+import CodeDashboardFrame from '../components/CodeDashboardFrame'
 import { AnalystWorkflowModal } from '../components/AnalystWorkflowModal'
 import { dashboardApi, datasetsApi, queryApi } from '../services/api'
 import { templateApi } from '../services/templateApi'
@@ -44,6 +45,7 @@ import type {
   DashboardWidget,
   Dataset,
   QueryData,
+  SkillItem,
   WidgetResult,
 } from '../types'
 
@@ -1654,6 +1656,12 @@ export default function DashboardPage() {
   const [analystModalOpen, setAnalystModalOpen] = useState(false)
   const [analystDatasetId, setAnalystDatasetId] = useState('')
   const [analystDatasetName, setAnalystDatasetName] = useState('')
+  const [showCodeGenModal, setShowCodeGenModal] = useState(false)
+  const [codeGenDatasetId, setCodeGenDatasetId] = useState<string>('')
+  const [codeGenIntent, setCodeGenIntent] = useState('')
+  const [codeGenSkillId, setCodeGenSkillId] = useState<string | undefined>(undefined)
+  const [codeGenSkills, setCodeGenSkills] = useState<SkillItem[]>([])
+  const [codeGenerating, setCodeGenerating] = useState(false)
   const quickInputRef = useRef<HTMLInputElement>(null)
   const { viewState: transitionState, startTransition, setLoading: setTransitionLoading, setExploding, setRevealing, setChatResult, setError: setTransitionError, finishReturn, isDashboardFullscreen: isFullscreen, setDashboardFullscreen } = useViewStore()
   const initRef = useRef(false)
@@ -1746,7 +1754,10 @@ export default function DashboardPage() {
     try {
       const res = await dashboardApi.get(id)
       setSelectedDashboard(res.data)
-      await runWidgetQueries(res.data, {})
+      // Code dashboards have no JSON widgets to query
+      if (res.data.render_mode !== 'code') {
+        await runWidgetQueries(res.data, {})
+      }
       setLastUpdated(new Date())
     } catch {
       message.error('看板加载失败')
@@ -1821,6 +1832,30 @@ export default function DashboardPage() {
     }
   }
 
+  const handleGenerateCode = async () => {
+    if (!codeGenDatasetId || !codeGenIntent.trim()) return
+    setCodeGenerating(true)
+    try {
+      const res = await dashboardApi.generateCode({
+        dataset_id: codeGenDatasetId,
+        intent: codeGenIntent.trim(),
+        skill_id: codeGenSkillId,
+      })
+      // Refresh dashboard list and navigate to new dashboard
+      const listRes = await dashboardApi.list()
+      setDashboards(listRes.data)
+      await loadDashboard(res.data.id)
+      setShowCodeGenModal(false)
+      setCodeGenIntent('')
+      setCodeGenSkillId(undefined)
+      message.success('AI 看板已生成')
+    } catch {
+      message.error('生成失败，请重试')
+    } finally {
+      setCodeGenerating(false)
+    }
+  }
+
   const handleRename = async () => {
     if (!selectedDashboard || !renameValue.trim()) return
     setRenameSaving(true)
@@ -1876,7 +1911,9 @@ export default function DashboardPage() {
   const canEdit =
     !!selectedDashboard &&
     (isAdmin || selectedDashboard.dashboard_type === 'personal')
-  const isEmptyDashboard = selectedDashboard != null && selectedDashboard.config.widgets.length === 0
+  const isEmptyDashboard = selectedDashboard != null
+    && selectedDashboard.render_mode !== 'code'
+    && selectedDashboard.config.widgets.length === 0
 
   const bubbleThinking = transitionState === 'loading' || transitionState === 'exploding'
 
@@ -2093,6 +2130,23 @@ export default function DashboardPage() {
               </Tooltip>
             )}
 
+            {isAdmin && selectedDashboard?.dataset_id && (
+              <Tooltip title="AI 代码看板">
+                <div
+                  style={actionBtnStyle}
+                  onClick={() => {
+                    setCodeGenDatasetId(selectedDashboard.dataset_id ?? '')
+                    dashboardApi.listSkills().then((r) => setCodeGenSkills(r.data)).catch(() => {})
+                    setShowCodeGenModal(true)
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                    <path d="M12 3l2 6h6l-5 4 2 6-5-4-5 4 2-6-5-4h6z"/>
+                  </svg>
+                </div>
+              </Tooltip>
+            )}
+
             {canEdit && (
               <>
                 <Tooltip title="重命名">
@@ -2282,9 +2336,29 @@ export default function DashboardPage() {
                         AI 生成图表
                       </Button>
                     )}
+                    {isAdmin && selectedDashboard.dataset_id && (
+                      <Button
+                        icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3l2 6h6l-5 4 2 6-5-4-5 4 2-6-5-4h6z"/></svg>}
+                        onClick={() => {
+                          setCodeGenDatasetId(selectedDashboard.dataset_id ?? '')
+                          dashboardApi.listSkills().then((r) => setCodeGenSkills(r.data)).catch(() => {})
+                          setShowCodeGenModal(true)
+                        }}
+                        style={{ borderRadius: 10 }}
+                      >
+                        AI 代码看板
+                      </Button>
+                    )}
                   </Space>
                 </div>
               </div>
+            ) : selectedDashboard.render_mode === 'code' && selectedDashboard.code_snapshot ? (
+              <CodeDashboardFrame
+                dashboardId={selectedDashboard.id}
+                codeSnapshot={selectedDashboard.code_snapshot}
+                isDark={isDark}
+                canRefine={canEdit}
+              />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {sortedRowKeys.map((rowKey, rowIdx) => {
@@ -2543,6 +2617,63 @@ export default function DashboardPage() {
               </div>
             </>
           )}
+        </div>
+      </Modal>
+
+      {/* ── AI 代码看板生成 Modal ── */}
+      <Modal
+        open={showCodeGenModal}
+        title="AI 代码看板生成"
+        onCancel={() => { setShowCodeGenModal(false); setCodeGenIntent('') }}
+        onOk={handleGenerateCode}
+        okText={codeGenerating ? '生成中…' : '开始生成'}
+        cancelText="取消"
+        confirmLoading={codeGenerating}
+        okButtonProps={{ disabled: !codeGenIntent.trim(), style: { background: '#6C5CE7', border: 'none' } }}
+        width={520}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '12px 0' }}>
+          <div>
+            <Text style={{ fontSize: 12, color: '#5F6B7A', display: 'block', marginBottom: 6 }}>分析意图</Text>
+            <Input.TextArea
+              placeholder="例如：分析合作伙伴回款健康度，找出高风险客户"
+              value={codeGenIntent}
+              onChange={(e) => setCodeGenIntent(e.target.value)}
+              rows={3}
+              style={{ resize: 'none' }}
+            />
+          </div>
+          {codeGenSkills.length > 0 && (
+            <div>
+              <Text style={{ fontSize: 12, color: '#5F6B7A', display: 'block', marginBottom: 6 }}>
+                Skill 模板（可选，帮助 AI 更精准分析）
+              </Text>
+              <Select
+                style={{ width: '100%' }}
+                placeholder="自动匹配"
+                allowClear
+                value={codeGenSkillId}
+                onChange={setCodeGenSkillId}
+                options={codeGenSkills.map((s) => ({
+                  value: s.id,
+                  label: `${s.name}${s.description ? ' — ' + s.description : ''}`,
+                }))}
+              />
+            </div>
+          )}
+          <div
+            style={{
+              padding: '10px 12px',
+              borderRadius: 8,
+              background: 'rgba(108,92,231,0.06)',
+              border: '1px solid rgba(162,155,254,0.15)',
+              fontSize: 12,
+              color: '#9CA3B4',
+              lineHeight: 1.7,
+            }}
+          >
+            AI 将自动分析数据、规划查询、生成完整的 HTML 看板，预计需要 30-60 秒。
+          </div>
         </div>
       </Modal>
 

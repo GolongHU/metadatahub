@@ -265,8 +265,26 @@ export interface DashboardDetail {
   owner_id: string | null
   is_pinned: boolean
   is_default: boolean
+  render_mode: 'json' | 'code'
+  code_snapshot: string | null
   created_at: string
   updated_at: string
+}
+
+export interface SkillItem {
+  id: string
+  name: string
+  description: string | null
+  category: string | null
+  trigger_keywords: string[]
+  sort_order: number
+}
+
+export interface GenerateCodeResponse {
+  id: string
+  name: string
+  render_mode: string
+  code_snapshot: string | null
 }
 
 export interface SaveToDashboardRequest {

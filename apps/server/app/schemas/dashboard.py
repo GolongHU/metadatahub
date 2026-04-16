@@ -29,6 +29,8 @@ class DashboardDetail(BaseModel):
     owner_id: Optional[uuid.UUID] = None
     is_pinned: bool = False
     is_default: bool = False
+    render_mode: str = "json"
+    code_snapshot: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -86,6 +88,34 @@ class ImportTemplateResponse(BaseModel):
     id: uuid.UUID
     name: str
     message: str
+
+
+class GenerateCodeRequest(BaseModel):
+    dataset_id: uuid.UUID
+    intent: str
+    skill_id: Optional[str] = None
+
+
+class GenerateCodeResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    render_mode: str
+    code_snapshot: Optional[str] = None
+
+
+class SkillItem(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    trigger_keywords: List[str] = []
+    sort_order: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class RefineCodeRequest(BaseModel):
+    instruction: str
 
 
 class SaveToDashboardRequest(BaseModel):

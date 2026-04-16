@@ -37,6 +37,10 @@ class DashboardConfig(Base):
     thumbnail_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
 
+    # Code dashboard fields
+    render_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="json")
+    code_snapshot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -46,6 +50,25 @@ class DashboardConfig(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+
+class DashboardSkill(Base):
+    __tablename__ = "dashboard_skills"
+
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    trigger_keywords: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=True, default=list)
+    required_fields: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    analysis_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    design_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_builtin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 

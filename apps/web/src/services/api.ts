@@ -91,6 +91,7 @@ import type {
   Dataset,
   DatasetAccessItem,
   DatasetDetail,
+  GenerateCodeResponse,
   PreviewRequest,
   ProviderTestResponse,
   PublicBranding,
@@ -98,6 +99,7 @@ import type {
   RlsRuleItem,
   SaveToDashboardRequest,
   SaveToDashboardResponse,
+  SkillItem,
   TaskRoutingItem,
   TaskRoutingOut,
   UpdateUserRequest,
@@ -193,6 +195,11 @@ export const dashboardApi = {
     api.delete(`/dashboards/${id}/widgets/${widgetId}`),
   importTemplate: (body: { template_id: string; dataset_id?: string; name?: string }) =>
     api.post<{ id: string; name: string; message: string }>('/dashboards/import-template', body),
+  listSkills: () => api.get<SkillItem[]>('/dashboards/skills'),
+  generateCode: (body: { dataset_id: string; intent: string; skill_id?: string }) =>
+    api.post<GenerateCodeResponse>('/dashboards/generate-code', body),
+  refine: (id: string, instruction: string) =>
+    api.post<GenerateCodeResponse>(`/dashboards/${id}/refine`, { instruction }),
 }
 
 export const conversationApi = {

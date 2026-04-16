@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.auth import get_current_user
-from app.models.dashboard import DashboardConfig
+from app.models.dashboard import DashboardConfig, DashboardSkill
 from app.models.dataset import Dataset
 from app.schemas.auth import AuthenticatedUser
 from app.schemas.dashboard import (
@@ -23,8 +23,12 @@ from app.schemas.dashboard import (
     DashboardListItem,
     DashboardQueryRequest,
     DashboardQueryResponse,
+    GenerateCodeRequest,
+    GenerateCodeResponse,
     ImportTemplateRequest,
     ImportTemplateResponse,
+    RefineCodeRequest,
+    SkillItem,
     UpdateDashboardRequest,
     WidgetResult,
 )
@@ -100,6 +104,8 @@ def _to_detail(d: DashboardConfig) -> DashboardDetail:
         owner_id=d.owner_id,
         is_pinned=d.is_pinned,
         is_default=d.is_default,
+        render_mode=d.render_mode,
+        code_snapshot=d.code_snapshot,
         created_at=d.created_at,
         updated_at=d.updated_at,
     )
@@ -827,3 +833,183 @@ async def generate_dashboard_from_plan(
     await db.commit()
     await db.refresh(dashboard)
     return _to_detail(dashboard)
+
+
+# ── Skill templates ────────────────────────────────────────────────────────────
+
+@router.get("/skills", response_model=list[SkillItem])
+async def list_skills(
+    db: AsyncSession = Depends(get_db),
+    _: AuthenticatedUser = Depends(get_current_user),
+) -> list[SkillItem]:
+    """List all active dashboard skill templates."""
+    result = await db.execute(
+        select(DashboardSkill)
+        .where(DashboardSkill.is_active == True)  # noqa: E712
+        .order_by(DashboardSkill.sort_order)
+    )
+    return [
+        SkillItem(
+            id=s.id,
+            name=s.name,
+            description=s.description,
+            category=s.category,
+            trigger_keywords=s.trigger_keywords or [],
+            sort_order=s.sort_order,
+        )
+        for s in result.scalars().all()
+    ]
+
+
+# ── Generate code dashboard ────────────────────────────────────────────────────
+
+@router.post("/generate-code", response_model=GenerateCodeResponse, status_code=status.HTTP_201_CREATED)
+async def generate_code_dashboard_endpoint(
+    body: GenerateCodeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> GenerateCodeResponse:
+    """AI 直接生成 HTML+ECharts 看板代码，写入 dashboard_configs (render_mode='code')."""
+    ds_result = await db.execute(
+        select(Dataset).where(Dataset.id == body.dataset_id, Dataset.is_active == True)  # noqa: E712
+    )
+    dataset = ds_result.scalars().first()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    table_name = f"dataset_{dataset.id.hex}"
+    schema_info = dataset.schema_info or {}
+    schema_fields = schema_info.get("columns", [])
+
+    from app.services.data_profiler import profile_dataset
+    profile = await profile_dataset(
+        dataset_id=str(body.dataset_id),
+        table_name=table_name,
+        schema_fields=schema_fields,
+    )
+
+    from app.database import get_duckdb
+
+    def _fetch_samples():
+        conn = get_duckdb()
+        rows = conn.execute(f'SELECT * FROM "{table_name}" LIMIT 20').fetchall()
+        if not rows:
+            return []
+        cols = [d[0] for d in conn.description] if rows else []
+        return [dict(zip(cols, r)) for r in rows]
+
+    loop = asyncio.get_event_loop()
+    sample_rows = await loop.run_in_executor(_executor, _fetch_samples)
+
+    from app.services.dashboard_code_generator import (
+        generate_code_dashboard as _gen_code,
+        build_iframe_html,
+    )
+    generated = await _gen_code(
+        dataset_id=str(body.dataset_id),
+        table_name=table_name,
+        intent=body.intent,
+        profile=profile,
+        sample_rows=sample_rows,
+        db=db,
+        skill_id=body.skill_id,
+    )
+
+    full_html = build_iframe_html(generated.html_code)
+
+    user_id = current_user.user_id if isinstance(current_user.user_id, uuid.UUID) else uuid.UUID(str(current_user.user_id))
+    new_dashboard = DashboardConfig(
+        id=uuid.uuid4(),
+        name=generated.name,
+        dataset_id=body.dataset_id,
+        config={"title": generated.name, "widgets": [], "table_name": table_name},
+        dashboard_type="personal",
+        render_mode="code",
+        code_snapshot=full_html,
+        owner_id=user_id,
+        created_by=user_id,
+    )
+    db.add(new_dashboard)
+    await db.commit()
+    await db.refresh(new_dashboard)
+
+    return GenerateCodeResponse(
+        id=new_dashboard.id,
+        name=new_dashboard.name,
+        render_mode=new_dashboard.render_mode,
+        code_snapshot=new_dashboard.code_snapshot,
+    )
+
+
+# ── Refine code dashboard ──────────────────────────────────────────────────────
+
+@router.post("/{dashboard_id}/refine", response_model=GenerateCodeResponse)
+async def refine_code_dashboard(
+    dashboard_id: uuid.UUID,
+    body: RefineCodeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> GenerateCodeResponse:
+    """Refine an existing code dashboard via AI instruction."""
+    dashboard = await _get_dashboard_or_404(dashboard_id, db)
+    _check_write_permission(dashboard, current_user)
+
+    if dashboard.render_mode != "code" or not dashboard.code_snapshot:
+        raise HTTPException(status_code=400, detail="Dashboard is not a code dashboard")
+
+    if not dashboard.dataset_id:
+        raise HTTPException(status_code=400, detail="Dashboard has no associated dataset")
+
+    ds_result2 = await db.execute(select(Dataset).where(Dataset.id == dashboard.dataset_id))
+    dataset = ds_result2.scalars().first()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    table_name = f"dataset_{dataset.id.hex}"
+    schema_info = dataset.schema_info or {}
+    schema_fields = schema_info.get("columns", [])
+
+    from app.services.data_profiler import profile_dataset
+    profile = await profile_dataset(
+        dataset_id=str(dashboard.dataset_id),
+        table_name=table_name,
+        schema_fields=schema_fields,
+    )
+
+    from app.database import get_duckdb
+
+    def _fetch_samples_refine():
+        conn = get_duckdb()
+        rows = conn.execute(f'SELECT * FROM "{table_name}" LIMIT 20').fetchall()
+        if not rows:
+            return []
+        cols = [d[0] for d in conn.description] if rows else []
+        return [dict(zip(cols, r)) for r in rows]
+
+    loop = asyncio.get_event_loop()
+    sample_rows = await loop.run_in_executor(_executor, _fetch_samples_refine)
+
+    from app.services.dashboard_code_generator import (
+        generate_code_dashboard as _gen_code,
+        build_iframe_html,
+    )
+    generated = await _gen_code(
+        dataset_id=str(dashboard.dataset_id),
+        table_name=table_name,
+        intent=body.instruction,
+        profile=profile,
+        sample_rows=sample_rows,
+        db=db,
+    )
+
+    full_html = build_iframe_html(generated.html_code)
+    dashboard.code_snapshot = full_html
+    await db.commit()
+    await db.refresh(dashboard)
+
+    return GenerateCodeResponse(
+        id=dashboard.id,
+        name=dashboard.name,
+        render_mode=dashboard.render_mode,
+        code_snapshot=dashboard.code_snapshot,
+    )
