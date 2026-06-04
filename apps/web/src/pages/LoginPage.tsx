@@ -9,12 +9,6 @@ import { useThemeStore } from '../stores/themeStore'
 const MOBIUS_PATH =
   'M24,56 C24,24 56,8 80,40 C104,72 136,56 136,56 C136,56 136,88 112,72 C88,40 56,56 24,56 Z'
 
-const QUICK_USERS = [
-  { label: 'Admin',       email: 'admin@metadatahub.local',   password: 'admin123',   color: '#A29BFE' },
-  { label: '华东经理',    email: 'manager@metadatahub.local', password: 'manager123', color: '#60A5FA' },
-  { label: '渠道专员',    email: 'rep@metadatahub.local',      password: 'rep123',     color: '#00E6A0' },
-  { label: '阿里云(伙伴)', email: 'partner@metadatahub.local', password: 'partner123', color: '#FFD166' },
-]
 
 const PARTICLE_COLORS = ['#6C5CE7', '#A29BFE', '#00C48C', '#FFB946', '#3B82F6', '#FF6B81']
 
@@ -102,50 +96,13 @@ function useLoginCanvas(canvasRef: React.RefObject<HTMLCanvasElement>, isDark: b
   }, [canvasRef, isDark])
 }
 
-// ── Quick-login button ─────────────────────────────────────────────────────────
-function QuickBtn({
-  user, loading, isDark, onClick,
-}: {
-  user: typeof QUICK_USERS[0]
-  loading: boolean
-  isDark: boolean
-  onClick: () => void
-}) {
-  const [hovered, setHovered] = useState(false)
-  return (
-    <button
-      onClick={onClick}
-      disabled={loading}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        padding:        '10px 12px',
-        borderRadius:   12,
-        border:         `1px solid ${hovered ? 'rgba(162,155,254,0.3)' : 'rgba(162,155,254,0.08)'}`,
-        background:     hovered
-          ? isDark ? 'rgba(42,37,80,0.5)' : 'rgba(108,92,231,0.08)'
-          : isDark ? 'rgba(15,17,23,0.4)' : 'rgba(255,255,255,0.5)',
-        color:          hovered ? (isDark ? '#E8ECF3' : '#1A1D2E') : '#9CA3B4',
-        fontSize:       12,
-        cursor:         loading ? 'not-allowed' : 'pointer',
-        display:        'flex',
-        alignItems:     'center',
-        justifyContent: 'center',
-        gap:            6,
-        fontFamily:     'Inter, -apple-system, sans-serif',
-        transition:     'all 0.2s',
-        opacity:        loading ? 0.5 : 1,
-      }}
-    >
-      <div style={{
-        width: 7, height: 7, borderRadius: '50%',
-        background: user.color, flexShrink: 0,
-        boxShadow: hovered ? `0 0 6px ${user.color}80` : 'none',
-        transition: 'box-shadow 0.2s',
-      }} />
-      {user.label}
-    </button>
-  )
+
+// ── DingTalk H5 detection ─────────────────────────────────────────────────────
+const DINGTALK_APP_KEY = 'dingd0ut6vrxlevdpq3n'
+function isDingTalkEnv() { return /DingTalk/i.test(navigator.userAgent) }
+declare const window: Window & {
+  DTOpenSDK?: { requestAuthCode: (o:{clientId:string}) => Promise<{code:string}> }
+  dd?: { getAuthCode: (o:{corpId:string;success:(r:{code:string})=>void;fail:()=>void})=>void }
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────────
@@ -165,6 +122,39 @@ export default function LoginPage() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   useLoginCanvas(canvasRef, isDark)
+
+  // 钉钉 code 换 JWT
+  const doLoginWithDTCode = async (code: string) => {
+    setLoading(true); setError(null)
+    try {
+      const res = await authApi.dingtalkLogin(code)
+      const { access_token, expires_in } = res.data
+      useAuthStore.getState().setAuth(access_token, (await authApi.me()).data, expires_in)
+      setCardAnim('exit')
+      setTimeout(() => navigate('/partners'), 600)
+    } catch (err: unknown) {
+      const msg = (err as {response?:{data?:{detail?:string}}})?.response?.data?.detail ?? '钉钉登录失败，请用邮箱密码'
+      setError(msg); setCardAnim('shake'); setTimeout(() => setCardAnim('idle'), 500)
+    } finally { setLoading(false) }
+  }
+
+  // 在钉钉里自动触发免登
+  useEffect(() => {
+    if (!isDingTalkEnv()) return
+    const tryDT = async () => {
+      try {
+        if (window.DTOpenSDK?.requestAuthCode) {
+          const { code } = await window.DTOpenSDK.requestAuthCode({ clientId: DINGTALK_APP_KEY })
+          if (code) doLoginWithDTCode(code)
+        } else if (window.dd?.getAuthCode) {
+          const corpId = new URLSearchParams(window.location.search).get('corpId') || ''
+          if (corpId) window.dd.getAuthCode({ corpId, success: r => r.code && doLoginWithDTCode(r.code), fail: () => {} })
+        }
+      } catch { /* fallback to email login */ }
+    }
+    const t = setTimeout(tryDT, 600)
+    return () => clearTimeout(t)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── API logic (unchanged) ──────────────────────────────────────────────────
   const doLogin = async (e: string, p: string) => {
@@ -198,11 +188,6 @@ export default function LoginPage() {
     doLogin(email, password)
   }
 
-  const quickLogin = (u: typeof QUICK_USERS[0]) => {
-    setEmail(u.email)
-    setPassword(u.password)
-    doLogin(u.email, u.password)
-  }
 
   // ── Theme tokens ──────────────────────────────────────────────────────────
   const bg             = isDark ? '#080A12'                    : '#F0EEFF'
@@ -216,7 +201,6 @@ export default function LoginPage() {
   const textSecondary  = isDark ? '#5F6B7A'                    : '#5F6B7A'
   const textTertiary   = isDark ? '#3D4256'                    : '#9CA3B4'
   const labelColor     = isDark ? '#5F6B7A'                    : '#9CA3B4'
-  const dividerColor   = isDark ? 'rgba(162,155,254,0.08)'     : 'rgba(108,92,231,0.08)'
   const mobiusTrack    = isDark ? 'rgba(162,155,254,0.12)'     : 'rgba(108,92,231,0.10)'
   const mobiusBall     = isDark ? '#A29BFE'                    : '#6C5CE7'
   const errorBorder    = 'rgba(255,71,87,0.35)'
@@ -610,39 +594,40 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Divider */}
-          <div style={{
-            display:     'flex',
-            alignItems:  'center',
-            gap:         10,
-            margin:      '22px 0 14px',
-          }}>
-            <div style={{ flex: 1, height: 1, background: dividerColor }} />
-            <span style={{
-              fontSize:      11,
-              color:         textTertiary,
-              letterSpacing: '0.5px',
-              textTransform: 'uppercase' as const,
-              fontFamily:    'Inter, -apple-system, sans-serif',
-              whiteSpace:    'nowrap',
-            }}>
-              quick access
-            </span>
-            <div style={{ flex: 1, height: 1, background: dividerColor }} />
-          </div>
 
-          {/* Quick login grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            {QUICK_USERS.map((u) => (
-              <QuickBtn
-                key={u.email}
-                user={u}
-                loading={loading}
-                isDark={isDark}
-                onClick={() => quickLogin(u)}
-              />
-            ))}
-          </div>
+          {/* DingTalk button — only shown inside DingTalk client */}
+          {isDingTalkEnv() && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, margin:'0 0 12px' }}>
+                <div style={{ flex:1, height:1, background: isDark?'rgba(162,155,254,0.1)':'rgba(108,92,231,0.1)' }} />
+                <span style={{ fontSize:11, color: isDark?'#3D4256':'#9CA3B4' }}>或</span>
+                <div style={{ flex:1, height:1, background: isDark?'rgba(162,155,254,0.1)':'rgba(108,92,231,0.1)' }} />
+              </div>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => {
+                  // OAuth redirect — works without JSAPI
+                  const redirectUri = encodeURIComponent(window.location.origin + '/auth/dingtalk/callback')
+                  const url = `https://login.dingtalk.com/oauth2/auth?client_id=${DINGTALK_APP_KEY}&redirect_uri=${redirectUri}&response_type=code&scope=openid&prompt=consent`
+                  window.location.href = url
+                }}
+                style={{
+                  width:'100%', padding:'12px', borderRadius:12,
+                  background: loading ? 'rgba(27,135,229,0.4)' : '#1B87E5',
+                  color:'white', border:'none', cursor: loading?'not-allowed':'pointer',
+                  fontSize:14, fontWeight:600, display:'flex', alignItems:'center',
+                  justifyContent:'center', gap:8, transition:'opacity 0.2s',
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 200 200" fill="none">
+                  <circle cx="100" cy="100" r="100" fill="#1B87E5"/>
+                  <path d="M148 88c-8-28-40-40-68-26 0 0 14-2 26 10 0 0-28 0-40 26 0 0 10-8 24-8 0 0-18 22-6 46 0 0 4-14 18-20 0 0-4 24 14 34 0 0-2-16 8-24 0 0 4 22 24 22 0 0-12-12-8-30 0 0 16 6 18 22 0 0 8-22-10-52z" fill="white"/>
+                </svg>
+                钉钉一键登录
+              </button>
+            </div>
+          )}
 
           {/* Tagline */}
           <div style={{

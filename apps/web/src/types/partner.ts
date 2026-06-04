@@ -18,3 +18,32 @@ export interface DimSection { dimension: string; dim_label: string; score: numbe
 export interface PartnerDetailData { partner_id: string; partner_name: string; region: string; manager_name?: string; tier: string; total_score: number; score_change: number; radar: Record<string, number>; dimensions: DimSection[]; monthly_trend: any[] }
 
 export type DimScore = DimDetail
+
+export interface PartnerListItem { id: string; name: string; region: string; tier: string; total_score: number }
+
+export interface PartnerProfileData {
+  partner_id: string
+  partner_name: string
+  short_name: string
+  level: string
+  region: string
+  team: string
+  manager_name?: string
+  status: string
+  since?: string
+  kpi: Record<string, number>
+  business_output: Record<string, number>
+  output_trend: Array<{ year: string; crm: number; shop: number; total: number }>
+  active_reports: Array<Record<string, unknown>>
+  recent_events: Array<Record<string, unknown>>
+  incentive?: Record<string, number> | null
+  account_flows: Array<Record<string, unknown>>
+  coupons?: Record<string, unknown> | null
+  cert_expire?: string
+  cooperate_expire?: string
+  contact?: Record<string, string> | null
+  pre_sale_count: number
+  post_sale_count: number
+  innovation_tag: boolean
+  pri: Record<string, unknown>
+}

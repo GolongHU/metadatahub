@@ -110,6 +110,8 @@ import type {
 export const authApi = {
   login: (email: string, password: string) =>
     api.post<{ access_token: string; expires_in: number }>('/auth/login', { email, password }),
+  dingtalkLogin: (code: string) =>
+    api.post<{ access_token: string; expires_in: number }>('/auth/dingtalk', { code }),
   me: () => api.get<{ user_id: string; name: string; email: string; role: string; region: string | null; partner_id: string | null }>('/auth/me'),
   logout: () => api.post('/auth/logout'),
 }

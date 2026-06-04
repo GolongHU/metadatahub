@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.config import settings
-from app.database import AsyncSessionLocal, close_duckdb, engine
+from app.database import AsyncSessionLocal, close_duckdb, engine, get_duckdb, _init_partner_views
 
 # ── Redis client (module-level, initialised in lifespan) ─────────────────────
 redis_client: aioredis.Redis | None = None
@@ -33,6 +33,15 @@ async def lifespan(app: FastAPI):
         logger.info("PostgreSQL connected")
     except Exception as exc:
         logger.warning("PostgreSQL not available: %s", exc)
+
+    # Initialize partner analytics table in DuckDB (synchronous, main thread)
+    try:
+        import app.database as _db_module
+        get_duckdb()  # ensure _duckdb_conn is open
+        _init_partner_views(_db_module._duckdb_conn)
+        logger.info("partner_analytics table ready")
+    except Exception as exc:
+        logger.warning("partner_analytics init failed: %s", exc)
 
     # Connect Redis (non-fatal on startup)
     try:
@@ -73,7 +82,7 @@ app.add_middleware(
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-from app.api import admin, ai_admin, auth, config, conversations, dashboards, datasets, health, partner, query, templates  # noqa: E402
+from app.api import admin, ai_admin, auth, config, conversations, dashboards, datasets, health, partner, query, templates, workspace  # noqa: E402
 from app.models import dashboard as _dashboard_model  # noqa: F401  ensure model is registered
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
@@ -88,6 +97,7 @@ app.include_router(ai_admin.router, prefix="/api/v1")
 app.include_router(partner.router, prefix="/api/v1")
 app.include_router(templates.router, prefix="/api/v1")
 app.include_router(conversations.router, prefix="/api/v1")
+app.include_router(workspace.router,    prefix="/api/v1")
 
 # Serve uploaded branding assets (logos, favicons)
 os.makedirs(settings.upload_dir, exist_ok=True)

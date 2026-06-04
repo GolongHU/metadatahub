@@ -184,10 +184,13 @@ class PermissionResolver:
         where = " AND ".join(f"({c})" for c in clauses)
 
         if table_name:
-            # Inject filter at source table level so aggregates still work:
-            # SELECT COUNT(*) FROM (SELECT * FROM table WHERE rls) AS table
+            # Inject filter at source table level so aggregates still work.
+            # Handle both quoted ("table") and unquoted (table) references.
             filtered = f"(SELECT * FROM {table_name} WHERE {where}) AS {table_name}"
-            final_sql = re.sub(rf"\b{re.escape(table_name)}\b", filtered, base_sql)
+            # Replace unquoted bare word
+            final_sql = re.sub(rf'(?<!")\b{re.escape(table_name)}\b(?!")', filtered, base_sql)
+            # Replace "table_name" (double-quoted form) with the unquoted subquery
+            final_sql = re.sub(rf'"{re.escape(table_name)}"', filtered, final_sql)
         else:
             # Fallback: CTE wrapping
             final_sql = f"WITH __base AS ({base_sql}) SELECT * FROM __base WHERE {where}"

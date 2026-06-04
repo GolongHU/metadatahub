@@ -7,6 +7,7 @@ import {
   SettingOutlined,
   ShopOutlined,
   SunOutlined,
+  TeamOutlined,
   UploadOutlined,
 } from '@ant-design/icons'
 import type { ReactNode } from 'react'
@@ -89,6 +90,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         { key: '/upload',      icon: <UploadOutlined />,    label: '上传数据',   enabled: canUpload,  visible: canUpload },
         { key: '/chat',        icon: <MessageOutlined />,   label: '数据对话',   enabled: true,       visible: true },
         { key: '/dashboard',   icon: <DashboardOutlined />, label: '数据看板',   enabled: true,       visible: true },
+        { key: '/workspace',   icon: <TeamOutlined />,      label: '工作台',     enabled: true,       visible: role==='ops_manager'||role==='partner_manager'||role==='admin' },
+        { key: '/partners',    icon: <TeamOutlined />,      label: '伙伴看板',   enabled: true,       visible: true },
       ],
     },
     {

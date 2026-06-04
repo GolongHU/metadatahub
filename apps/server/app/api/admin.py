@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.dashboard import DashboardSkill
 from app.models.dataset import Dataset
 from app.models.permission import DatasetAccess, RlsRule
 from app.models.user import User
@@ -305,4 +306,119 @@ async def delete_rls_rule(
     if rule is None:
         raise HTTPException(status_code=404, detail="RLS rule not found")
     await db.delete(rule)
+    await db.commit()
+
+
+# ── Dashboard Skills CRUD ──────────────────────────────────────────────────────
+
+from pydantic import BaseModel as _BM
+from typing import Optional as _Opt, List as _List
+
+
+class SkillCreateRequest(_BM):
+    id: str
+    name: str
+    description: _Opt[str] = None
+    category: _Opt[str] = None
+    trigger_keywords: _List[str] = []
+    analysis_prompt: _Opt[str] = None
+    design_notes: _Opt[str] = None
+    sort_order: int = 0
+
+
+class SkillUpdateRequest(_BM):
+    name: _Opt[str] = None
+    description: _Opt[str] = None
+    category: _Opt[str] = None
+    trigger_keywords: _Opt[_List[str]] = None
+    analysis_prompt: _Opt[str] = None
+    design_notes: _Opt[str] = None
+    sort_order: _Opt[int] = None
+    is_active: _Opt[bool] = None
+
+
+class SkillOut(_BM):
+    id: str
+    name: str
+    description: _Opt[str] = None
+    category: _Opt[str] = None
+    trigger_keywords: _List[str] = []
+    analysis_prompt: _Opt[str] = None
+    design_notes: _Opt[str] = None
+    is_builtin: bool = False
+    is_active: bool = True
+    sort_order: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/dashboard-skills", response_model=list[SkillOut])
+async def list_dashboard_skills(
+    db: AsyncSession = Depends(get_db),
+    _: AuthenticatedUser = Depends(require_admin),
+) -> list[SkillOut]:
+    result = await db.execute(
+        select(DashboardSkill).order_by(DashboardSkill.sort_order, DashboardSkill.id)
+    )
+    return [SkillOut.model_validate(s) for s in result.scalars().all()]
+
+
+@router.post("/dashboard-skills", response_model=SkillOut, status_code=status.HTTP_201_CREATED)
+async def create_dashboard_skill(
+    body: SkillCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    _: AuthenticatedUser = Depends(require_admin),
+) -> SkillOut:
+    existing = await db.execute(select(DashboardSkill).where(DashboardSkill.id == body.id))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Skill ID already exists")
+    skill = DashboardSkill(
+        id=body.id,
+        name=body.name,
+        description=body.description,
+        category=body.category,
+        trigger_keywords=body.trigger_keywords,
+        analysis_prompt=body.analysis_prompt,
+        design_notes=body.design_notes,
+        sort_order=body.sort_order,
+        is_builtin=False,
+        is_active=True,
+    )
+    db.add(skill)
+    await db.commit()
+    await db.refresh(skill)
+    return SkillOut.model_validate(skill)
+
+
+@router.put("/dashboard-skills/{skill_id}", response_model=SkillOut)
+async def update_dashboard_skill(
+    skill_id: str,
+    body: SkillUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _: AuthenticatedUser = Depends(require_admin),
+) -> SkillOut:
+    result = await db.execute(select(DashboardSkill).where(DashboardSkill.id == skill_id))
+    skill = result.scalar_one_or_none()
+    if skill is None:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(skill, field, value)
+    await db.commit()
+    await db.refresh(skill)
+    return SkillOut.model_validate(skill)
+
+
+@router.delete("/dashboard-skills/{skill_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_dashboard_skill(
+    skill_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: AuthenticatedUser = Depends(require_admin),
+) -> None:
+    result = await db.execute(select(DashboardSkill).where(DashboardSkill.id == skill_id))
+    skill = result.scalar_one_or_none()
+    if skill is None:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    if skill.is_builtin:
+        raise HTTPException(status_code=400, detail="Cannot delete built-in skill, disable it instead")
+    await db.delete(skill)
     await db.commit()

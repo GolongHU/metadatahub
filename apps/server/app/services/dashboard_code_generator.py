@@ -26,11 +26,15 @@ KPI: 标签 11px color var(--text-secondary) + 数值 22px font-weight 500 color
 
 HTML_WRAPPER_STYLE = """
 * { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%;
+  min-width: 0;
+}
 body {
   font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
   background: transparent;
   color: var(--text-primary, #1A1D2E);
-  padding: 0;
+  padding: 12px;
 }
 :root {
   --text-primary: #1A1D2E;
@@ -55,7 +59,7 @@ body {
     --border: rgba(162,155,254,0.08);
   }
 }
-.dashboard-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; padding: 0; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; padding: 0; width: 100%; }
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -379,7 +383,8 @@ ECharts 全局变量已注入（无需 import）:
 - 每个 ECharts 图表 init 后监听 window resize
 - KPI 卡片不用 ECharts，直接用 DOM 渲染
 - 图表 div 需要设置 height（如 style="height:220px"）
-- col-span 用 style="grid-column: span N"
+- 必须在最外层包一个 <div class="dashboard-grid"> … </div>（整个看板就是这个网格）
+- 网格项 col-span 用 style="grid-column: span N"，N 在 1-6 之间
 """
 
     # Format query results for AI
@@ -499,9 +504,7 @@ def build_iframe_html(fragment: str) -> str:
 </script>
 </head>
 <body>
-<div class="dashboard-grid">
 {fragment}
-</div>
 <script>
 // Auto-resize all ECharts instances on window resize
 window.addEventListener('resize', function() {{

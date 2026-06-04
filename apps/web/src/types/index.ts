@@ -55,6 +55,7 @@ export interface AskResponse {
   dataset_id: string
   scope_desc?: string
   debug_sql?: string
+  unavailable?: boolean
 }
 
 // ── Admin types ───────────────────────────────────────────────────────────────
@@ -332,6 +333,7 @@ export interface ChatMessage {
   dataset_id?: string
   loading?: boolean
   error?: string
+  unavailable?: boolean
 }
 
 // ── Conversation history ───────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import { Tabs } from 'antd'
 import { useThemeStore } from '../stores/themeStore'
 import AIModelsTab from './settings/AIModelsTab'
 import BrandingTab from './settings/BrandingTab'
+import DashboardSkillsTab from './settings/DashboardSkillsTab'
 import DashboardTemplatesTab from './settings/DashboardTemplatesTab'
 import SystemTab from './settings/SystemTab'
 
@@ -13,6 +14,7 @@ export default function SettingsPage() {
     { key: 'branding',   label: '品牌设置',   children: <BrandingTab /> },
     { key: 'ai',         label: 'AI 模型',    children: <AIModelsTab /> },
     { key: 'dashboards', label: '看板模板',   children: <DashboardTemplatesTab /> },
+    { key: 'skills',     label: 'Skill 模板', children: <DashboardSkillsTab /> },
     { key: 'system',     label: '系统参数',   children: <SystemTab /> },
   ]
 

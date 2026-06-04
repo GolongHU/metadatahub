@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy import (
     Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, func
 )
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -35,14 +35,18 @@ class Partner(Base):
     __tablename__ = "partners"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # name 唯一约束，供 sync_agent ON CONFLICT (name) upsert
+    name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
     short_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    region: Mapped[str] = mapped_column(String(50), nullable=False)
+    region: Mapped[str] = mapped_column(String(50), nullable=False, default="")
     manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("org_structure.id"), nullable=True
     )
+    # PRI 分类：核心伙伴 / 增长引擎 / 价值伙伴 / 潜力伙伴 / 普通伙伴
     tier: Mapped[str] = mapped_column(String(50), nullable=False, default="growth")
-    total_score: Mapped[float] = mapped_column(Numeric(4, 2), nullable=False, default=5.0)
+    total_score: Mapped[float] = mapped_column(Numeric(6, 2), nullable=False, default=5.0)
+    ops_manager: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    partner_manager: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     joined_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -110,3 +114,18 @@ class MetricVisibility(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     metric_key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
     visible_roles: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+
+
+class PartnerProfile(Base):
+    __tablename__ = "partner_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    partner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("partners.id", ondelete="CASCADE"),
+        nullable=False, unique=True, index=True,
+    )
+    period: Mapped[str] = mapped_column(String(7), nullable=False)
+    profile_data: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )

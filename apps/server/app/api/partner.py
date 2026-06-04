@@ -28,8 +28,10 @@ from app.schemas.partner import (
     ImprovementSuggestion,
     MetricRow,
     DimSection,
+    PartnerListItem,
+    PartnerProfileData,
 )
-from app.models.partner import Partner, PartnerMetric, OrgStructure, MetricVisibility
+from app.models.partner import Partner, PartnerMetric, OrgStructure, MetricVisibility, PartnerProfile
 
 router = APIRouter(tags=["partner"])
 
@@ -37,12 +39,13 @@ router = APIRouter(tags=["partner"])
 # Constants
 # ---------------------------------------------------------------------------
 
-LATEST_PERIOD = "2025-03"
-PREV_PERIOD = "2025-02"
+# Resolved dynamically via _resolve_periods() at request time
+LATEST_PERIOD = "2026-06"
+PREV_PERIOD = "2026-05"
 
 ALL_PERIODS = [
-    "2024-04", "2024-05", "2024-06", "2024-07", "2024-08", "2024-09",
-    "2024-10", "2024-11", "2024-12", "2025-01", "2025-02", "2025-03",
+    "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12",
+    "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06",
 ]
 
 DIM_LABELS: dict[str, str] = {
@@ -62,30 +65,36 @@ WEIGHTS: dict[str, float] = {
 }
 
 DIM_SCORING: dict[str, list[tuple[str, float, str]]] = {
+    # D1 — 业务规模 (performance)
     "performance": [
-        ("crm_revenue", 0.4, "higher"),
-        ("collection_rate", 0.4, "higher"),
-        ("order_count", 0.2, "higher"),
+        ("crm_revenue",    0.5, "higher"),  # CRM当年营收（万元）
+        ("collection_rate",0.3, "higher"),  # 回款率（%）
+        ("order_count",    0.2, "higher"),  # 成交单数
     ],
+    # D2 — 增长活力 (growth)，7子项等权
     "growth": [
-        ("yoy_growth_rate", 0.4, "higher"),
-        ("new_customer_ratio", 0.3, "higher"),
-        ("innovation_ratio", 0.3, "higher"),
+        ("yoy_growth_rate",    1/7, "higher"),  # 年化增速（万元绝对增量）
+        ("lead_priority_ratio",1/7, "higher"),  # 成交率（%）
+        ("new_customer_ratio", 1/7, "higher"),  # 新客比（%）
+        ("innovation_ratio",   1/7, "higher"),  # AI产品占比（%）
+        ("saas_ratio",         1/7, "higher"),  # SaaS订阅占比（%）
+        ("mall_penetration",   1/7, "higher"),  # 商城渗透率（%）
+        ("active_revenue",     1/7, "higher"),  # 当年活跃总额（万元）
     ],
+    # D3 — 能力建设 (engagement)
     "engagement": [
-        ("lead_count", 0.4, "higher"),
-        ("certified_count", 0.3, "higher"),
-        ("lead_priority_ratio", 0.3, "higher"),
+        ("lead_count",      0.5, "higher"),  # 报备数
+        ("certified_count", 0.5, "higher"),  # 认证条数
     ],
+    # D4 — 经营健康 (health)
     "health": [
-        ("timely_collection_rate", 0.4, "higher"),
-        ("overdue_ratio", 0.3, "lower"),
-        ("invoice_health_days", 0.3, "lower"),
+        ("timely_collection_rate", 0.4, "higher"),  # 账期达标率（%）
+        ("overdue_ratio",          0.3, "lower"),   # 逾期率（%），逆向
+        ("invoice_health_days",    0.3, "lower"),   # 平均账期（天），逆向
     ],
+    # D5 — 平台活跃 (activity)
     "activity": [
-        ("mall_login_freq", 0.3, "higher"),
-        ("cttalk_freq", 0.35, "higher"),
-        ("kb_access_freq", 0.35, "higher"),
+        ("login_score", 1.0, "higher"),  # 加权登录分 (rc×3+li)/tot
     ],
 }
 
@@ -102,21 +111,35 @@ TIER_THRESHOLDS: dict[str, float] = {
 }
 
 METRIC_DISPLAY: dict[str, dict[str, str]] = {
-    "crm_revenue": {"name": "CRM营收", "unit": "万元"},
-    "collection_rate": {"name": "回款率", "unit": "%"},
-    "order_count": {"name": "订单数", "unit": "单"},
-    "yoy_growth_rate": {"name": "同比增长率", "unit": "%"},
-    "new_customer_ratio": {"name": "新客占比", "unit": "%"},
-    "innovation_ratio": {"name": "创新产品占比", "unit": "%"},
-    "lead_count": {"name": "线索数", "unit": "条"},
-    "certified_count": {"name": "认证人数", "unit": "人"},
-    "lead_priority_ratio": {"name": "高优线索占比", "unit": "%"},
-    "timely_collection_rate": {"name": "及时回款率", "unit": "%"},
-    "overdue_ratio": {"name": "逾期率", "unit": "%"},
-    "invoice_health_days": {"name": "发票健康天数", "unit": "天"},
-    "mall_login_freq": {"name": "商城登录频次", "unit": "次/月"},
-    "cttalk_freq": {"name": "CTTalk频次", "unit": "次/月"},
-    "kb_access_freq": {"name": "知识库访问", "unit": "次/月"},
+    # D1 performance
+    "crm_revenue":            {"name": "CRM营收",     "unit": "万元"},
+    "collection_rate":        {"name": "回款率",       "unit": "%"},
+    "order_count":            {"name": "成交单数",     "unit": "单"},
+    # D2 growth
+    "yoy_growth_rate":        {"name": "年化增速",     "unit": "万元"},
+    "new_customer_ratio":     {"name": "新客比",       "unit": "%"},
+    "innovation_ratio":       {"name": "AI产品占比",   "unit": "%"},
+    "saas_ratio":             {"name": "SaaS占比",     "unit": "%"},
+    "mall_penetration":       {"name": "商城渗透率",   "unit": "%"},
+    "active_revenue":         {"name": "当年活跃营收", "unit": "万元"},
+    "lead_priority_ratio":    {"name": "成交率",       "unit": "%"},
+    # D3 engagement
+    "lead_count":             {"name": "报备数",       "unit": "条"},
+    "certified_count":        {"name": "认证数",       "unit": "项"},
+    # D4 health
+    "timely_collection_rate": {"name": "账期达标率",   "unit": "%"},
+    "overdue_ratio":          {"name": "逾期率",       "unit": "%"},
+    "invoice_health_days":    {"name": "平均账期",     "unit": "天"},
+    # D5 activity
+    "login_score":            {"name": "平台活跃分",   "unit": "分"},
+    # 附加展示字段
+    "two_year_revenue":       {"name": "近两年营收",   "unit": "万元"},
+    "mall_revenue":           {"name": "商城营收",     "unit": "万元"},
+    "paid_amount":            {"name": "累计回款",     "unit": "万元"},
+    "overdue_amount":         {"name": "逾期金额",     "unit": "万元"},
+    "nc_count":               {"name": "新客户数",     "unit": "家"},
+    "deal_count":             {"name": "成交数",       "unit": "单"},
+    "report_count":           {"name": "报备总数",     "unit": "条"},
 }
 
 
@@ -270,8 +293,7 @@ async def _fetch_metric_visibility(db: AsyncSession, role: str) -> set[str]:
     """Return set of visible metric_keys for given role."""
     result = await db.execute(
         select(MetricVisibility.metric_key).where(
-            MetricVisibility.role == role,
-            MetricVisibility.is_visible == True,
+            MetricVisibility.visible_roles.contains([role]),
         )
     )
     rows = result.all()
@@ -1076,7 +1098,91 @@ async def self_dashboard(
 
 
 # ---------------------------------------------------------------------------
-# Endpoint 5: Partner detail
+# Endpoint 5: Partner list / search (for hub autocomplete)
+# ---------------------------------------------------------------------------
+
+@router.get("/partners", response_model=list[PartnerListItem])
+async def list_partners(
+    q: str = "",
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> list[PartnerListItem]:
+    """搜索伙伴列表。角色过滤：
+    ops_manager → 按 ops_manager 字段；partner_manager → 按 partner_manager 字段；
+    partner → 仅自己公司；admin/analyst → 全量。
+    """
+    stmt = select(Partner).where(Partner.is_active.is_(True))
+    if q.strip():
+        stmt = stmt.where(Partner.name.ilike(f"%{q.strip()}%"))
+
+    role  = current_user.role
+    uname = getattr(current_user, "name", "") or ""
+
+    if role == "ops_manager" and uname:
+        stmt = stmt.where(Partner.ops_manager == uname)
+    elif role == "partner_manager" and uname:
+        stmt = stmt.where(Partner.partner_manager == uname)
+    elif role == "partner":
+        pid = getattr(current_user, "partner_id", None)
+        if pid:
+            stmt = stmt.where(Partner.id == pid)
+        else:
+            return []
+
+    stmt = stmt.order_by(Partner.total_score.desc()).limit(limit)
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    return [
+        PartnerListItem(
+            id=str(p.id),
+            name=p.name,
+            region=p.region or "",
+            tier=p.tier or "growth",
+            total_score=float(p.total_score or 0),
+        )
+        for p in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Endpoint 6: Partner full profile (rich dashboard data)
+# ---------------------------------------------------------------------------
+
+@router.get("/partner/{partner_id}/profile", response_model=PartnerProfileData)
+async def partner_profile(
+    partner_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> PartnerProfileData:
+    """返回完整伙伴经营看板数据（由 sync_agent 写入 partner_profiles 表）"""
+    p_result = await db.execute(select(Partner).where(Partner.id == partner_id))
+    partner = p_result.scalar_one_or_none()
+    if not partner:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partner not found")
+
+    prof_result = await db.execute(
+        select(PartnerProfile).where(PartnerProfile.partner_id == partner_id)
+    )
+    profile = prof_result.scalar_one_or_none()
+
+    if profile and profile.profile_data:
+        data = dict(profile.profile_data)
+        data["partner_id"] = str(partner_id)
+        return PartnerProfileData(**data)
+
+    # Fallback: return minimal data from partners table before first sync
+    return PartnerProfileData(
+        partner_id=str(partner_id),
+        partner_name=partner.name,
+        short_name=(partner.short_name or partner.name)[:6],
+        region=partner.region or "",
+        pri={"total_score": float(partner.total_score or 0), "tier": partner.tier or "growth"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Endpoint 7: Partner detail
 # ---------------------------------------------------------------------------
 
 @router.get("/partner/{partner_id}/detail", response_model=PartnerDetailData)

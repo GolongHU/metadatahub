@@ -10,10 +10,10 @@ from pydantic import BaseModel
 class ColumnInfo(BaseModel):
     name: str
     type: str  # string | integer | float | date | boolean
-    nullable: bool
-    null_ratio: float
-    distinct_count: int
-    sample_values: List[Any]
+    nullable: bool = True
+    null_ratio: float = 0.0
+    distinct_count: int = 0
+    sample_values: List[Any] = []
     min_value: Optional[Any] = None
     max_value: Optional[Any] = None
     description: str = ""
@@ -21,7 +21,9 @@ class ColumnInfo(BaseModel):
 
 class DatasetSchema(BaseModel):
     columns: List[ColumnInfo]
-    row_count: int
+    row_count: int = 0
+    table_name: Optional[str] = None
+    business_context: Optional[str] = None
 
 
 class DatasetOut(BaseModel):

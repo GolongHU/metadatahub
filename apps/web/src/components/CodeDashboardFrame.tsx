@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { dashboardApi } from '../services/api'
 import { message } from 'antd'
 
@@ -60,10 +60,12 @@ export default function CodeDashboardFrame({
     }
   }
 
-  const blobUrl = (() => {
+  const blobUrl = useMemo(() => {
     const blob = new Blob([currentHtml], { type: 'text/html' })
     return URL.createObjectURL(blob)
-  })()
+  }, [currentHtml])
+
+  useEffect(() => () => URL.revokeObjectURL(blobUrl), [blobUrl])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

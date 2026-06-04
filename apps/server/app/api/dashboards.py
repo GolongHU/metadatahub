@@ -104,8 +104,8 @@ def _to_detail(d: DashboardConfig) -> DashboardDetail:
         owner_id=d.owner_id,
         is_pinned=d.is_pinned,
         is_default=d.is_default,
-        render_mode=d.render_mode,
-        code_snapshot=d.code_snapshot,
+        render_mode=getattr(d, "render_mode", "json") or "json",
+        code_snapshot=getattr(d, "code_snapshot", None),
         created_at=d.created_at,
         updated_at=d.updated_at,
     )
@@ -556,6 +556,111 @@ async def create_dashboard(
     await db.commit()
     await db.refresh(dashboard)
     return _to_detail(dashboard)
+
+
+# ── Skill templates (must be before /{dashboard_id} to avoid routing conflict) ─
+
+@router.get("/skills", response_model=list[SkillItem])
+async def list_skills_early(
+    db: AsyncSession = Depends(get_db),
+    _: AuthenticatedUser = Depends(get_current_user),
+) -> list[SkillItem]:
+    """List all active dashboard skill templates."""
+    result = await db.execute(
+        select(DashboardSkill)
+        .where(DashboardSkill.is_active == True)  # noqa: E712
+        .order_by(DashboardSkill.sort_order)
+    )
+    return [
+        SkillItem(
+            id=s.id,
+            name=s.name,
+            description=s.description,
+            category=s.category,
+            trigger_keywords=s.trigger_keywords or [],
+            sort_order=s.sort_order,
+        )
+        for s in result.scalars().all()
+    ]
+
+
+# ── Generate code dashboard (must be before /{dashboard_id}) ──────────────────
+
+@router.post("/generate-code", response_model=GenerateCodeResponse, status_code=status.HTTP_201_CREATED)
+async def generate_code_dashboard_early(
+    body: GenerateCodeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> GenerateCodeResponse:
+    """AI 直接生成 HTML+ECharts 看板代码。"""
+    ds_result = await db.execute(
+        select(Dataset).where(Dataset.id == body.dataset_id, Dataset.is_active == True)  # noqa: E712
+    )
+    dataset = ds_result.scalars().first()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    table_name = f"dataset_{dataset.id.hex}"
+    schema_info = dataset.schema_info or {}
+    schema_fields = schema_info.get("columns", [])
+
+    from app.services.data_profiler import profile_dataset
+    profile = await profile_dataset(
+        dataset_id=str(body.dataset_id),
+        table_name=table_name,
+        schema_fields=schema_fields,
+    )
+
+    from app.database import get_duckdb
+
+    def _fetch_samples_early():
+        conn = get_duckdb()
+        rows = conn.execute(f'SELECT * FROM "{table_name}" LIMIT 20').fetchall()
+        if not rows:
+            return []
+        cols = [d[0] for d in conn.description] if rows else []
+        return [dict(zip(cols, r)) for r in rows]
+
+    loop = asyncio.get_event_loop()
+    sample_rows = await loop.run_in_executor(_executor, _fetch_samples_early)
+
+    from app.services.dashboard_code_generator import (
+        generate_code_dashboard as _gen_code,
+        build_iframe_html,
+    )
+    generated = await _gen_code(
+        dataset_id=str(body.dataset_id),
+        table_name=table_name,
+        intent=body.intent,
+        profile=profile,
+        sample_rows=sample_rows,
+        db=db,
+        skill_id=body.skill_id,
+    )
+
+    full_html = build_iframe_html(generated.html_code)
+    user_id = current_user.user_id if isinstance(current_user.user_id, uuid.UUID) else uuid.UUID(str(current_user.user_id))
+    new_dashboard = DashboardConfig(
+        id=uuid.uuid4(),
+        name=generated.name,
+        dataset_id=body.dataset_id,
+        config={"title": generated.name, "widgets": [], "table_name": table_name},
+        dashboard_type="personal",
+        render_mode="code",
+        code_snapshot=full_html,
+        owner_id=user_id,
+        created_by=user_id,
+    )
+    db.add(new_dashboard)
+    await db.commit()
+    await db.refresh(new_dashboard)
+
+    return GenerateCodeResponse(
+        id=new_dashboard.id,
+        name=new_dashboard.name,
+        render_mode=new_dashboard.render_mode,
+        code_snapshot=new_dashboard.code_snapshot,
+    )
 
 
 # ── Get ───────────────────────────────────────────────────────────────────────

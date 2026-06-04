@@ -177,3 +177,38 @@ class PartnerDetailData(BaseModel):
     radar: dict[str, float]
     dimensions: list[DimSection]
     monthly_trend: list[dict]
+
+
+class PartnerListItem(BaseModel):
+    id: str
+    name: str
+    region: str
+    tier: str
+    total_score: float
+
+
+class PartnerProfileData(BaseModel):
+    partner_id: str
+    partner_name: str
+    short_name: str = ""
+    level: str = ""
+    region: str = ""
+    team: str = ""
+    manager_name: Optional[str] = None
+    status: str = "keep"
+    since: Optional[str] = None
+    kpi: dict = {}
+    business_output: dict = {}
+    output_trend: list = []
+    active_reports: list = []
+    recent_events: list = []
+    incentive: Optional[dict] = None
+    account_flows: list = []
+    coupons: Optional[dict] = None
+    cert_expire: Optional[str] = None
+    cooperate_expire: Optional[str] = None
+    contact: Optional[dict] = None
+    pre_sale_count: int = 0
+    post_sale_count: int = 0
+    innovation_tag: bool = False
+    pri: dict = {}

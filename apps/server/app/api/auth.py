@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+import httpx
+from fastapi import APIRouter, Body, Cookie, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -182,6 +184,73 @@ async def logout(
 
 
 # ── GET /auth/me ──────────────────────────────────────────────────────────────
+
+# ── POST /auth/dingtalk ── H5 内嵌免登 ────────────────────────────────────────
+
+@router.post("/dingtalk", response_model=TokenResponse)
+async def dingtalk_login(
+    code: str = Body(..., embed=True),
+    response: Response = None,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """钉钉 H5 免登：前端传 authCode，换取用户信息并签发 JWT。"""
+    app_key    = os.environ.get("DINGTALK_APP_KEY", "dingd0ut6vrxlevdpq3n")
+    app_secret = os.environ.get("DINGTALK_APP_SECRET", "")
+
+    if not app_secret:
+        raise HTTPException(status_code=500, detail="DINGTALK_APP_SECRET not configured")
+
+    # 1. 用 authCode 换取用户 accessToken
+    async with httpx.AsyncClient(timeout=10) as client:
+        token_resp = await client.post(
+            "https://api.dingtalk.com/v1.0/oauth2/userAccessToken",
+            json={"clientId": app_key, "clientSecret": app_secret,
+                  "code": code, "grantType": "authorization_code"},
+        )
+    if token_resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="钉钉授权失败，请重试")
+
+    dt_access_token = token_resp.json().get("accessToken", "")
+    if not dt_access_token:
+        raise HTTPException(status_code=401, detail="钉钉授权失败：无效 token")
+
+    # 2. 获取钉钉用户信息
+    async with httpx.AsyncClient(timeout=10) as client:
+        user_resp = await client.get(
+            "https://api.dingtalk.com/v1.0/contact/users/me",
+            headers={"x-acs-dingtalk-access-token": dt_access_token},
+        )
+    if user_resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="获取钉钉用户信息失败")
+
+    dt_info   = user_resp.json()
+    dt_nick   = dt_info.get("nick", "")
+    dt_mobile = dt_info.get("mobile", "")
+
+    # 3. 按姓名匹配内部用户
+    result = await db.execute(
+        select(User).where(User.name == dt_nick, User.is_active == True)  # noqa: E712
+    )
+    user: User | None = result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=403,
+            detail=f"用户「{dt_nick}」未在系统注册，请联系管理员",
+        )
+
+    # 4. 签发 JWT（复用现有逻辑）
+    access_token, expires_in = create_access_token(_build_access_payload(user))
+    raw_rt, rt_hash = generate_refresh_token()
+    db.add(RefreshToken(
+        token_hash=rt_hash,
+        user_id=user.id,
+        expires_at=refresh_token_expiry(),
+    ))
+    await db.commit()
+    _set_refresh_cookie(response, raw_rt)
+    return TokenResponse(access_token=access_token, expires_in=expires_in)
+
 
 @router.get("/me")
 async def me(current_user: AuthenticatedUser = Depends(get_current_user)) -> dict:

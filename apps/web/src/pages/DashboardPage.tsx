@@ -2130,12 +2130,12 @@ export default function DashboardPage() {
               </Tooltip>
             )}
 
-            {isAdmin && selectedDashboard?.dataset_id && (
+            {isAdmin && (
               <Tooltip title="AI 代码看板">
                 <div
                   style={actionBtnStyle}
                   onClick={() => {
-                    setCodeGenDatasetId(selectedDashboard.dataset_id ?? '')
+                    setCodeGenDatasetId(selectedDashboard?.dataset_id ?? '')
                     dashboardApi.listSkills().then((r) => setCodeGenSkills(r.data)).catch(() => {})
                     setShowCodeGenModal(true)
                   }}
@@ -2336,7 +2336,7 @@ export default function DashboardPage() {
                         AI 生成图表
                       </Button>
                     )}
-                    {isAdmin && selectedDashboard.dataset_id && (
+                    {isAdmin && (
                       <Button
                         icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3l2 6h6l-5 4 2 6-5-4-5 4 2-6-5-4h6z"/></svg>}
                         onClick={() => {
@@ -2629,10 +2629,20 @@ export default function DashboardPage() {
         okText={codeGenerating ? '生成中…' : '开始生成'}
         cancelText="取消"
         confirmLoading={codeGenerating}
-        okButtonProps={{ disabled: !codeGenIntent.trim(), style: { background: '#6C5CE7', border: 'none' } }}
+        okButtonProps={{ disabled: !codeGenIntent.trim() || !codeGenDatasetId, style: { background: '#6C5CE7', border: 'none' } }}
         width={520}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '12px 0' }}>
+          <div>
+            <Text style={{ fontSize: 12, color: '#5F6B7A', display: 'block', marginBottom: 6 }}>数据集</Text>
+            <Select
+              style={{ width: '100%' }}
+              placeholder="选择数据集"
+              value={codeGenDatasetId || undefined}
+              onChange={setCodeGenDatasetId}
+              options={datasets.map((d) => ({ value: d.id, label: d.name }))}
+            />
+          </div>
           <div>
             <Text style={{ fontSize: 12, color: '#5F6B7A', display: 'block', marginBottom: 6 }}>分析意图</Text>
             <Input.TextArea
@@ -2646,7 +2656,7 @@ export default function DashboardPage() {
           {codeGenSkills.length > 0 && (
             <div>
               <Text style={{ fontSize: 12, color: '#5F6B7A', display: 'block', marginBottom: 6 }}>
-                Skill 模板（可选，帮助 AI 更精准分析）
+                Skill 模板（可选）
               </Text>
               <Select
                 style={{ width: '100%' }}
@@ -2656,7 +2666,7 @@ export default function DashboardPage() {
                 onChange={setCodeGenSkillId}
                 options={codeGenSkills.map((s) => ({
                   value: s.id,
-                  label: `${s.name}${s.description ? ' — ' + s.description : ''}`,
+                  label: s.name,
                 }))}
               />
             </div>

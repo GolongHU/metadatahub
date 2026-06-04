@@ -34,6 +34,7 @@ class AskResponse(BaseModel):
     dataset_id: str
     scope_desc: Optional[str] = None   # human-readable data scope from JWT
     debug_sql: Optional[str] = None    # final SQL after RLS injection (for debugging)
+    unavailable: bool = False          # True when AI signals the required fields don't exist
 
 
 class SafetyResult(BaseModel):

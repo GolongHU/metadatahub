@@ -12,6 +12,9 @@ import SettingsPage from './pages/SettingsPage'
 import TemplateEditor from './pages/TemplateEditor'
 import TemplatesPage from './pages/TemplatesPage'
 import UploadPage from './pages/UploadPage'
+import PartnerDashboardPage from './pages/PartnerDashboardPage'
+import DingTalkCallbackPage from './pages/DingTalkCallbackPage'
+import WorkspacePage from './pages/WorkspacePage'
 import { authApi } from './services/api'
 import { useAuthStore } from './stores/authStore'
 import { useBrandingStore } from './stores/brandingStore'
@@ -137,6 +140,9 @@ export default function App() {
         <Route path="/templates"      element={<ProtectedRoute adminOnly><TemplatesPage /></ProtectedRoute>} />
         <Route path="/templates/:id"  element={<ProtectedRoute adminOnly noLayout><TemplateEditor /></ProtectedRoute>} />
         <Route path="/marketplace"    element={<ProtectedRoute><MarketplacePage /></ProtectedRoute>} />
+        <Route path="/partners"       element={<ProtectedRoute><PartnerDashboardPage /></ProtectedRoute>} />
+        <Route path="/workspace"      element={<ProtectedRoute><WorkspacePage /></ProtectedRoute>} />
+        <Route path="/auth/dingtalk/callback" element={<DingTalkCallbackPage />} />
         <Route path="/"  element={<Navigate to="/dashboard" replace />} />
         <Route path="*"  element={<Navigate to="/dashboard" replace />} />
       </Routes>

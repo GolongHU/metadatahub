@@ -242,9 +242,15 @@ async def get_field_values(
     table_name = f"dataset_{dataset_id.hex}"
     try:
         conn = get_duckdb()
-        rel = conn.execute(
-            f'SELECT DISTINCT "{field}" FROM "{table_name}" WHERE "{field}" IS NOT NULL ORDER BY "{field}" LIMIT 200'
-        )
+        try:
+            rel = conn.execute(
+                f'SELECT DISTINCT "{field}" FROM "{table_name}" WHERE "{field}" IS NOT NULL ORDER BY "{field}" LIMIT 200'
+            )
+        except Exception:
+            # ORDER BY may fail on mixed-type columns; retry without it
+            rel = conn.execute(
+                f'SELECT DISTINCT "{field}" FROM "{table_name}" WHERE "{field}" IS NOT NULL LIMIT 200'
+            )
         values = [str(row[0]) for row in rel.fetchall()]
         conn.close()
     except Exception as exc:

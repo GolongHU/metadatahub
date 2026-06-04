@@ -14,7 +14,10 @@ from app.schemas.query import GeneratedSQL
 # ── Prompt builders ───────────────────────────────────────────────────────────
 
 def _build_schema_block(table_name: str, schema: DatasetSchema) -> str:
-    lines = [f"Table: {table_name}", "Columns (always reference with double-quotes in SQL):"]
+    lines = [f"Table: {table_name}"]
+    if schema.business_context:
+        lines.append(f"Business context: {schema.business_context}")
+    lines.append("Columns (always reference with double-quotes in SQL):")
     for col in schema.columns:
         extras: List[str] = []
         if col.sample_values:
@@ -56,11 +59,13 @@ _SYSTEM_PROMPT_TEMPLATE = """\
 
 规则：
 1. 只生成 SELECT 语句，不要生成 DDL、DML、UNION、注释(--)或分号。
-2. 使用上面显示的确切表名（包括 "dataset_" 前缀）。
+2. 使用上面显示的确切表名（不要添加任何前缀或修改表名）。
 3. DuckDB 中所有列均以 VARCHAR 存储。需要聚合时请 CAST 为 DOUBLE/INTEGER。
 4. 保持 SQL 简洁，符合 DuckDB 语法。
 5. 不要添加任何 WHERE 权限过滤条件，系统会自动处理。
 6. 所有列名必须用双引号括起来，例如："合作伙伴名称" → \"合作伙伴名称\"，不得使用反引号或方括号。
+7. 【排行类问题】用户问"哪个最高/最低/最多/前N名"时，默认返回 TOP 10（ORDER BY ... LIMIT 10），除非用户明确要求其他数量。不要只返回 1 条。
+8. 【无法回答】如果问题涉及数据集中不存在的字段（如激励到期日、合同日期等），在 explanation 中一句话说明原因，SQL 中使用 WHERE 1=0 作为信号，系统会自动展示友好提示。
 
 {chart_rules}
 
@@ -235,17 +240,31 @@ def _get_env_client():
 
 async def _call_env_provider(system_prompt: str, user_content: str, max_tokens: Optional[int] = None) -> str:
     client = _get_env_client()
-    kwargs: dict = dict(
-        model=settings.ai_model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ],
-    )
-    if max_tokens:
-        kwargs["max_tokens"] = max_tokens
-    response = await client.chat.completions.create(**kwargs)
-    return response.choices[0].message.content or ""
+    # Try Responses API first (GPT-5 / newer models), fallback to chat completions
+    try:
+        kwargs: dict = dict(model=settings.ai_model, instructions=system_prompt, input=user_content)
+        if max_tokens:
+            kwargs["max_output_tokens"] = max_tokens
+        response = await client.responses.create(**kwargs)
+        # Extract text from output[].content[].text where type == output_text
+        for item in (response.output or []):
+            for c in (item.content or []):
+                if getattr(c, "type", "") == "output_text":
+                    return c.text or ""
+        return ""
+    except Exception:
+        # Fallback: chat completions (older models)
+        kwargs2: dict = dict(
+            model=settings.ai_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+        )
+        if max_tokens:
+            kwargs2["max_tokens"] = max_tokens
+        response2 = await client.chat.completions.create(**kwargs2)
+        return response2.choices[0].message.content or ""
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

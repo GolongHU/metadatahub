@@ -48,7 +48,12 @@ async def ask(
     if dataset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
 
-    table_name = f"dataset_{dataset.id.hex}"
+    # duckdb_view uses actual view name; uploaded files use dataset_{uuid}
+    table_name = (
+        dataset.file_path
+        if dataset.source_type == "duckdb_view" and dataset.file_path
+        else f"dataset_{dataset.id.hex}"
+    )
     schema = DatasetSchema(**dataset.schema_info)
 
     # 2. Generate SQL via AI
@@ -73,6 +78,20 @@ async def ask(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Generated SQL failed safety check: {safety.reason}",
+        )
+
+    # Detect "cannot answer" signal: AI uses WHERE 1=0 when required fields are missing.
+    import re as _re
+    if _re.search(r"WHERE\s+1\s*=\s*0", generated.sql, _re.IGNORECASE):
+        return AskResponse(
+            sql=generated.sql,
+            explanation=generated.explanation or "当前数据集不包含回答此问题所需的字段，请换个问法试试。",
+            chart_type="table",
+            data=QueryData(columns=[], rows=[], row_count=0, execution_time_ms=0),
+            dataset_id=str(body.dataset_id),
+            scope_desc=current_user.scope_desc,
+            debug_sql=generated.sql,
+            unavailable=True,
         )
 
     # 4. Permission Resolver — inject RLS WHERE + get masked columns

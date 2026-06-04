@@ -210,6 +210,29 @@ function AssistantBubble({ msg, onSave, isDark }: {
     )
   }
 
+  if (msg.unavailable) {
+    return (
+      <div style={{ display: 'flex', gap: 12, marginBottom: 24, alignItems: 'flex-start' }}>
+        <MobiusAvatar isDark={isDark} />
+        <div style={{
+          ...cardStyle,
+          padding: '16px 20px',
+          display: 'flex', alignItems: 'flex-start', gap: 12,
+        }}>
+          <span style={{ fontSize: 18, lineHeight: 1, marginTop: 1 }}>💡</span>
+          <div>
+            <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 500, color: isDark ? '#C8D0DC' : '#2D3142' }}>
+              当前数据集暂不支持此查询
+            </p>
+            <p style={{ margin: 0, fontSize: 13, color: isDark ? '#8A95A8' : '#666', lineHeight: 1.6 }}>
+              {msg.explanation || '所需字段不在伙伴数据集中，可以换个方式提问试试。'}
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const chartLabel =
     msg.chart_type === 'bar'            ? '柱状图'
     : msg.chart_type === 'bar_horizontal' ? '条形图'
@@ -875,10 +898,10 @@ export default function ChatPage() {
     setSending(true)
     try {
       const res = await queryApi.ask(question, dsId)
-      const { sql, explanation, chart_type, data } = res.data
+      const { sql, explanation, chart_type, data, unavailable } = res.data
       setMessages((prev) => prev.map((m) =>
         m.id === loadingMsg.id
-          ? { ...m, loading: false, content: explanation, sql, explanation, chart_type: chart_type as ChartType, data, dataset_id: dsId }
+          ? { ...m, loading: false, content: explanation, sql, explanation, chart_type: chart_type as ChartType, data, dataset_id: dsId, unavailable }
           : m
       ))
       addQuery({

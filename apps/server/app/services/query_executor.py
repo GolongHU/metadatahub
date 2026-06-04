@@ -76,24 +76,41 @@ _ROW_LIMIT = 10_000
 _TIMEOUT_SECONDS = 30
 
 
+def _execute_partner_query(sql: str) -> QueryResult:
+    """Execute partner_analytics query via fresh in-memory DuckDB + PostgreSQL."""
+    import os, re, duckdb as _duckdb
+    from app.database import _init_partner_views
+    conn = _duckdb.connect(":memory:")
+    _init_partner_views(conn)
+    limited_sql = _inject_limit(sql, _ROW_LIMIT)
+    t0 = time.perf_counter()
+    rel = conn.execute(limited_sql)
+    columns = [desc[0] for desc in rel.description]
+    rows = [list(r) for r in rel.fetchall()]
+    conn.close()
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    return QueryResult(columns=columns, rows=rows, row_count=len(rows), execution_time_ms=round(elapsed_ms, 2))
+
+
 def execute_query(sql: str, dataset_table: str) -> QueryResult:
     """
     Execute a validated SELECT against DuckDB.
-    Enforces a 10,000-row cap and returns structured results.
+    For partner_analytics: uses a fresh in-memory DuckDB session.
     """
+    # Partner analytics uses its own in-memory session for reliability
+    if dataset_table == "partner_analytics":
+        return _execute_partner_query(sql)
+
     conn = get_duckdb()
 
     # Inject row limit if not already present
     limited_sql = _inject_limit(sql, _ROW_LIMIT)
 
     t0 = time.perf_counter()
-    try:
-        conn.execute(f"SET threads TO 4")
-        rel = conn.execute(limited_sql)
-        columns = [desc[0] for desc in rel.description]
-        rows = [list(row) for row in rel.fetchall()]
-    finally:
-        conn.close()
+    conn.execute("SET threads TO 4")
+    rel = conn.execute(limited_sql)
+    columns = [desc[0] for desc in rel.description]
+    rows = [list(row) for row in rel.fetchall()]
 
     elapsed_ms = (time.perf_counter() - t0) * 1000
 
