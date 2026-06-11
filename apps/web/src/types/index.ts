@@ -365,3 +365,13 @@ export interface ConversationDetail {
   created_at: string
   updated_at: string
 }
+
+export interface HtmlDashboardItem {
+  id: string
+  name: string
+  description: string | null
+  dataset_ids: string[]
+  init_function_name: string | null
+  created_by: string | null
+  created_at: string
+}

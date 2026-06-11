@@ -1,55 +1,38 @@
 #!/usr/bin/env bash
-# Deploy frontend + backend, run DB migrations, verify
+# Deploy frontend + backend, run DB migrations
+# Target: 内网服务器 10.2.38.146
 set -e
 
-SERVER=root@47.113.187.130
-APP_DIR=/opt/metadatahub
+SERVER=root@10.2.38.146
+WEB_DIR=/opt/metadatahub-web
+SERVER_DIR=/opt/metadatahub-server
+ALEMBIC=/opt/pyenv/bin/alembic
+UVICORN=/opt/pyenv/bin/uvicorn
 
-echo "=== 1. Syncing frontend dist ==="
-rsync -avz --delete apps/web/dist/ $SERVER:$APP_DIR/apps/web/dist/
-ssh $SERVER "docker cp $APP_DIR/apps/web/dist/. mh_nginx:/usr/share/nginx/html/"
+echo "=== 1. Building frontend ==="
+cd apps/web && pnpm build && cd ../..
 
-echo "=== 2. Syncing backend ==="
-rsync -avz apps/server/app/ $SERVER:$APP_DIR/apps/server/app/
-rsync -avz apps/server/alembic/ $SERVER:$APP_DIR/apps/server/alembic/
-rsync -avz apps/server/scripts/ $SERVER:$APP_DIR/apps/server/scripts/ 2>/dev/null || true
+echo "=== 2. Syncing frontend dist ==="
+rsync -avz --delete apps/web/dist/ $SERVER:$WEB_DIR/
 
-echo "=== 3. Copying app into container ==="
-ssh $SERVER "docker cp $APP_DIR/apps/server/app/. mh_api:/app/app/"
-ssh $SERVER "docker cp $APP_DIR/apps/server/alembic/. mh_api:/app/alembic/"
+echo "=== 3. Syncing backend ==="
+rsync -avz apps/server/app/      $SERVER:$SERVER_DIR/app/
+rsync -avz apps/server/alembic/  $SERVER:$SERVER_DIR/alembic/
+rsync -avz apps/server/scripts/  $SERVER:$SERVER_DIR/scripts/ 2>/dev/null || true
 
 echo "=== 4. Running DB migrations ==="
-ssh $SERVER "docker exec mh_api alembic upgrade head"
+ssh $SERVER "cd $SERVER_DIR && $ALEMBIC upgrade head"
 
-echo "=== 5. Checking seed data ==="
-PARTNER_COUNT=$(ssh $SERVER "docker exec mh_api python3 -c \"
-import asyncio
-from app.database import AsyncSessionLocal
-from sqlalchemy import text
+echo "=== 5. Restarting API ==="
+ssh $SERVER "pkill -f uvicorn || true; sleep 2; \
+  cd $SERVER_DIR && nohup $UVICORN app.main:app \
+  --host 0.0.0.0 --port 8000 --workers 2 \
+  >> /var/log/metadatahub-api.log 2>&1 &"
 
-async def check():
-    async with AsyncSessionLocal() as s:
-        r = await s.execute(text('SELECT COUNT(*) FROM partners'))
-        print(r.scalar())
+sleep 4
 
-asyncio.run(check())
-\"" 2>&1)
-echo "Partners in DB: $PARTNER_COUNT"
-
-if [ "$PARTNER_COUNT" = "0" ] || [ -z "$PARTNER_COUNT" ]; then
-    echo "=== 5a. Running seed script ==="
-    ssh $SERVER "docker exec mh_api python3 /app/scripts/seed_partners.py" || \
-    ssh $SERVER "docker exec mh_api python3 scripts/seed_partners.py" || \
-    echo "WARNING: Seed script not found or failed"
-fi
-
-echo "=== 6. Restarting API ==="
-ssh $SERVER "docker restart mh_api"
-sleep 5
-
-echo "=== 7. Health check ==="
-API_IP=$(ssh $SERVER "docker inspect mh_api --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'")
-ssh $SERVER "curl -s http://$API_IP:8000/api/v1/health"
+echo "=== 6. Health check ==="
+curl -s http://10.2.38.146/api/v1/health
 
 echo ""
 echo "=== Deploy complete ==="

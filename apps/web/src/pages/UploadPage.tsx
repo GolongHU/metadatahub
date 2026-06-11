@@ -2,6 +2,8 @@ import { MessageOutlined } from '@ant-design/icons'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { datasetsApi } from '../services/api'
+import type { DuplicateCheckMatch } from '../services/api'
+import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
 import type { ColumnInfo, Dataset, DatasetDetail } from '../types'
 
@@ -189,22 +191,74 @@ function SchemaPreview({
 }
 
 // ── Recent dataset row ────────────────────────────────────────────────────────
-function RecentItem({ ds, isDark }: { ds: Dataset; isDark: boolean }) {
-  const [hovered, setHovered] = useState(false)
+function RecentItem({ ds, isDark, onDelete, onError }: { ds: Dataset; isDark: boolean; onDelete: (id: string) => void; onError: (msg: string) => void }) {
+  const [hovered,    setHovered]    = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [deleting,   setDeleting]   = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const navigate = useNavigate()
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirming) { setConfirming(true); return }
+    setDeleting(true)
+    onDelete(ds.id.toString())
+  }
+
+  const handleCancelDelete = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setConfirming(false)
+  }
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setDownloading(true)
+    try {
+      const res = await datasetsApi.download(ds.id.toString())
+      const url = window.URL.createObjectURL(res.data as Blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${ds.name}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: Blob; status?: number } }
+      if (e.response?.data instanceof Blob) {
+        const text = await e.response.data.text().catch(() => '')
+        try {
+          const json = JSON.parse(text)
+          onError(json.detail ?? '下载失败')
+        } catch {
+          onError(`下载失败 (${e.response.status ?? ''})`)
+        }
+      } else {
+        onError('下载失败，请重试')
+      }
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <div
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseLeave={() => { setHovered(false); setConfirming(false) }}
       style={{
         display: 'flex', alignItems: 'center', gap: 12,
         padding: '12px 16px', borderRadius: 14,
-        background: hovered
+        background: confirming
+          ? isDark ? 'rgba(255,71,87,0.06)' : 'rgba(255,71,87,0.04)'
+          : hovered
           ? isDark ? 'rgba(42,37,80,0.35)' : 'rgba(255,255,255,0.72)'
           : isDark ? 'rgba(26,29,46,0.30)' : 'rgba(255,255,255,0.50)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
-        border: `1px solid ${hovered
+        border: `1px solid ${confirming
+          ? isDark ? 'rgba(255,71,87,0.20)' : 'rgba(255,71,87,0.15)'
+          : hovered
           ? isDark ? 'rgba(162,155,254,0.14)' : 'rgba(108,92,231,0.14)'
           : isDark ? 'rgba(162,155,254,0.05)' : 'rgba(108,92,231,0.05)'}`,
         transition: 'all 0.15s',
@@ -220,35 +274,162 @@ function RecentItem({ ds, isDark }: { ds: Dataset; isDark: boolean }) {
           {ds.row_count.toLocaleString()} 行 · {ds.column_count} 字段 · {formatDate(ds.created_at)}
         </div>
       </div>
-      {/* Status */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginRight: 8 }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#00C48C', boxShadow: '0 0 6px rgba(0,196,140,0.5)' }} />
-        <span style={{ fontSize: 11, color: '#00C48C', fontFamily: 'Inter, -apple-system, sans-serif' }}>Ready</span>
+
+      {confirming ? (
+        /* Confirm row */
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <span style={{ fontSize: 12, color: '#FF4757', fontFamily: 'Inter, -apple-system, sans-serif' }}>确认删除?</span>
+          <button
+            onClick={handleDeleteClick}
+            disabled={deleting}
+            style={{
+              padding: '4px 10px', borderRadius: 7, border: 'none',
+              background: '#FF4757', color: '#fff', fontSize: 12,
+              cursor: deleting ? 'not-allowed' : 'pointer',
+              fontFamily: 'Inter, -apple-system, sans-serif', opacity: deleting ? 0.6 : 1,
+            }}
+          >
+            {deleting ? '删除中' : '删除'}
+          </button>
+          <button
+            onClick={handleCancelDelete}
+            style={{
+              padding: '4px 10px', borderRadius: 7,
+              border: `1px solid ${isDark ? 'rgba(162,155,254,0.15)' : 'rgba(108,92,231,0.15)'}`,
+              background: 'transparent', color: isDark ? '#9CA3B4' : '#5F6B7A',
+              fontSize: 12, cursor: 'pointer',
+              fontFamily: 'Inter, -apple-system, sans-serif',
+            }}
+          >
+            取消
+          </button>
+        </div>
+      ) : (
+        /* Normal row actions */
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginRight: 4 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#00C48C', boxShadow: '0 0 6px rgba(0,196,140,0.5)' }} />
+            <span style={{ fontSize: 11, color: '#00C48C', fontFamily: 'Inter, -apple-system, sans-serif' }}>Ready</span>
+          </div>
+          {/* Download */}
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            title="下载"
+            style={{
+              width: 28, height: 28, borderRadius: 8,
+              background: hovered ? isDark ? 'rgba(108,151,218,0.12)' : 'rgba(108,151,218,0.08)' : 'transparent',
+              border: `1px solid ${hovered ? isDark ? 'rgba(108,151,218,0.20)' : 'rgba(108,151,218,0.15)' : 'transparent'}`,
+              color: isDark ? '#5F6B7A' : '#9CA3B4',
+              cursor: downloading ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.15s', opacity: downloading ? 0.6 : 1,
+            }}
+            onMouseEnter={e => { if (!downloading) (e.currentTarget as HTMLButtonElement).style.color = '#6C97DA' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = isDark ? '#5F6B7A' : '#9CA3B4' }}
+          >
+            <svg viewBox="0 0 16 16" width={14} height={14} fill="none"
+              stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 2v8M3 10l5 4 5-4M2 14h12" />
+            </svg>
+          </button>
+          {/* Delete — admin only */}
+          {isAdmin && (
+            <button
+              onClick={handleDeleteClick}
+              title="删除"
+              style={{
+                width: 28, height: 28, borderRadius: 8,
+                background: hovered ? 'rgba(255,71,87,0.08)' : 'transparent',
+                border: `1px solid ${hovered ? 'rgba(255,71,87,0.18)' : 'transparent'}`,
+                color: isDark ? '#5F6B7A' : '#9CA3B4',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#FF4757' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = isDark ? '#5F6B7A' : '#9CA3B4' }}
+            >
+              <svg viewBox="0 0 16 16" width={14} height={14} fill="none"
+                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 4h12M6 4V2h4v2M5 4l1 9h4l1-9" />
+              </svg>
+            </button>
+          )}
+          {/* Explore */}
+          <button
+            onClick={() => navigate(`/chat?dataset_id=${ds.id}`)}
+            title="开始探索"
+            style={{
+              width: 28, height: 28, borderRadius: 8,
+              background: hovered ? isDark ? 'rgba(162,155,254,0.12)' : 'rgba(108,92,231,0.08)' : 'transparent',
+              border: `1px solid ${hovered ? isDark ? 'rgba(162,155,254,0.20)' : 'rgba(108,92,231,0.15)' : 'transparent'}`,
+              color: isDark ? '#A29BFE' : '#6C5CE7',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.15s',
+            }}
+          >
+            <svg viewBox="0 0 16 16" width={14} height={14} fill="none"
+              stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3l5 5-5 5M3 8h10" />
+            </svg>
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Trash item row ────────────────────────────────────────────────────────────
+function TrashItem({ ds, isDark, onRestore }: { ds: Dataset; isDark: boolean; onRestore: (id: string) => void }) {
+  const [restoring, setRestoring] = useState(false)
+
+  const handleRestore = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setRestoring(true)
+    try {
+      await datasetsApi.restore(ds.id.toString())
+      onRestore(ds.id.toString())
+    } finally {
+      setRestoring(false)
+    }
+  }
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '10px 16px', borderRadius: 12,
+      background: isDark ? 'rgba(26,29,46,0.25)' : 'rgba(255,255,255,0.40)',
+      border: `1px solid ${isDark ? 'rgba(162,155,254,0.05)' : 'rgba(108,92,231,0.05)'}`,
+      opacity: 0.7,
+    }}>
+      <FileTypeIcon type={ds.source_type} size={28} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: isDark ? '#9CA3B4' : '#5F6B7A', fontFamily: 'Inter, -apple-system, sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {ds.name}
+        </div>
+        <div style={{ fontSize: 11, color: isDark ? '#3D4256' : '#C4CBD6', fontFamily: 'Inter, -apple-system, sans-serif' }}>
+          {ds.row_count.toLocaleString()} 行 · {formatDate(ds.created_at)}
+        </div>
       </div>
-      {/* Explore */}
       <button
-        onClick={() => navigate(`/chat?dataset_id=${ds.id}`)}
-        title="开始探索"
+        onClick={handleRestore}
+        disabled={restoring}
+        title="恢复"
         style={{
-          width: 28, height: 28, borderRadius: 8,
-          background: hovered ? isDark ? 'rgba(162,155,254,0.12)' : 'rgba(108,92,231,0.08)' : 'transparent',
-          border: `1px solid ${hovered ? isDark ? 'rgba(162,155,254,0.20)' : 'rgba(108,92,231,0.15)' : 'transparent'}`,
-          color: isDark ? '#A29BFE' : '#6C5CE7',
-          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'all 0.15s',
+          padding: '4px 12px', borderRadius: 7, border: `1px solid ${isDark ? 'rgba(0,200,140,0.25)' : 'rgba(0,200,140,0.30)'}`,
+          background: 'transparent', color: '#00C48C',
+          fontSize: 12, cursor: restoring ? 'not-allowed' : 'pointer',
+          fontFamily: 'Inter, -apple-system, sans-serif', opacity: restoring ? 0.5 : 1,
         }}
       >
-        <svg viewBox="0 0 16 16" width={14} height={14} fill="none"
-          stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M8 3l5 5-5 5M3 8h10" />
-        </svg>
+        {restoring ? '恢复中' : '恢复'}
       </button>
     </div>
   )
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
-type Phase = 'idle' | 'uploading' | 'preview' | 'success'
+type Phase = 'idle' | 'checking' | 'confirm_replace' | 'uploading' | 'preview' | 'success'
 
 export default function UploadPage() {
   const navigate          = useNavigate()
@@ -257,20 +438,40 @@ export default function UploadPage() {
   const fileInputRef      = useRef<HTMLInputElement>(null)
   const progressRef       = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const [phase,          setPhase]          = useState<Phase>('idle')
-  const [dataset,        setDataset]        = useState<DatasetDetail | null>(null)
-  const [currentFile,    setCurrentFile]    = useState<File | null>(null)
-  const [error,          setError]          = useState<string | null>(null)
-  const [isDragging,     setIsDragging]     = useState(false)
-  const [isHovered,      setIsHovered]      = useState(false)
-  const [fakeProgress,   setFakeProgress]   = useState(0)
-  const [recentDatasets, setRecentDatasets] = useState<Dataset[]>([])
+  const [phase,           setPhase]          = useState<Phase>('idle')
+  const [dataset,         setDataset]        = useState<DatasetDetail | null>(null)
+  const [currentFile,     setCurrentFile]    = useState<File | null>(null)
+  const [duplicate,       setDuplicate]      = useState<DuplicateCheckMatch['dataset'] | null>(null)
+  const [error,           setError]          = useState<string | null>(null)
+  const [isDragging,      setIsDragging]     = useState(false)
+  const [isHovered,       setIsHovered]      = useState(false)
+  const [fakeProgress,    setFakeProgress]   = useState(0)
+  const [recentDatasets,  setRecentDatasets] = useState<Dataset[]>([])
+  const [trashDatasets,   setTrashDatasets]  = useState<Dataset[]>([])
+  const [trashOpen,       setTrashOpen]      = useState(false)
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
 
   const loadDatasets = () => {
     datasetsApi.list().then((r) => setRecentDatasets(r.data)).catch(() => {})
   }
 
+  const loadTrash = () => {
+    datasetsApi.trash().then((r) => setTrashDatasets(r.data)).catch(() => {})
+  }
+
+  const handleDelete = (id: string) => {
+    datasetsApi.delete(id)
+      .then(() => { loadDatasets(); loadTrash() })
+      .catch(() => setError('删除失败，请重试'))
+  }
+
+  const handleRestore = (id: string) => {
+    loadDatasets()
+    setTrashDatasets((prev) => prev.filter((d) => d.id.toString() !== id))
+  }
+
   useEffect(() => { loadDatasets() }, [])
+  useEffect(() => { if (isAdmin) loadTrash() }, [isAdmin])
 
   // Fake progress animation during upload
   useEffect(() => {
@@ -288,14 +489,13 @@ export default function UploadPage() {
     return () => { if (progressRef.current) clearInterval(progressRef.current) }
   }, [phase])
 
-  // ── API logic (unchanged) ──────────────────────────────────────────────────
-  const handleUpload = async (file: File) => {
+  // ── Core upload (with optional replaceId) ─────────────────────────────────
+  const doUpload = async (file: File, replaceId?: string) => {
     setPhase('uploading')
-    setCurrentFile(file)
     setError(null)
     setDataset(null)
     try {
-      const res = await datasetsApi.upload(file)
+      const res = await datasetsApi.upload(file, replaceId)
       if (progressRef.current) clearInterval(progressRef.current)
       setFakeProgress(100)
       setTimeout(() => {
@@ -313,6 +513,27 @@ export default function UploadPage() {
     }
   }
 
+  // ── File selected: check for name collision first ──────────────────────────
+  const handleFileSelected = async (file: File) => {
+    setCurrentFile(file)
+    setError(null)
+    setDuplicate(null)
+
+    const stem = file.name.replace(/\.[^.]+$/, '')
+    setPhase('checking')
+    try {
+      const res = await datasetsApi.checkName(stem)
+      if (res.data.exists) {
+        setDuplicate(res.data.dataset)
+        setPhase('confirm_replace')
+        return
+      }
+    } catch {
+      // If check fails, proceed with normal upload
+    }
+    doUpload(file)
+  }
+
   const handleConfirm = () => {
     if (!dataset) return
     setPhase('success')
@@ -326,11 +547,11 @@ export default function UploadPage() {
     e.preventDefault()
     setIsDragging(false)
     const file = e.dataTransfer.files[0]
-    if (file) handleUpload(file)
+    if (file) handleFileSelected(file)
   }
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) { handleUpload(file); e.target.value = '' }
+    if (file) { handleFileSelected(file); e.target.value = '' }
   }
 
   // ── Theme tokens ──────────────────────────────────────────────────────────
@@ -418,7 +639,7 @@ export default function UploadPage() {
         <div style={{ width: 'min(580px, 100%)', display: 'flex', flexDirection: 'column', gap: 0 }}>
 
           {/* ── Header text ── */}
-          {phase !== 'success' && (
+          {phase !== 'success' && phase !== 'confirm_replace' && phase !== 'checking' && (
             <div style={{ textAlign: 'center', marginBottom: 28 }}>
               <h2 style={{
                 fontSize: 24, fontWeight: 500, margin: '0 0 10px',
@@ -612,6 +833,138 @@ export default function UploadPage() {
             </div>
           )}
 
+          {/* ── Phase: checking (name lookup spinner) ── */}
+          {phase === 'checking' && (
+            <div style={{
+              width: '100%', padding: '48px 40px', borderRadius: 24,
+              background: isDark ? 'rgba(26,29,46,0.35)' : 'rgba(255,255,255,0.50)',
+              backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+              border: `1.5px dashed ${isDark ? 'rgba(162,155,254,0.15)' : 'rgba(108,92,231,0.15)'}`,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
+            }}>
+              <svg viewBox="0 0 160 112" width={80} height={56} style={{ overflow: 'visible' }}>
+                <path d={MP} fill="none"
+                  stroke={isDark ? 'rgba(162,155,254,0.18)' : 'rgba(108,92,231,0.15)'}
+                  strokeWidth="3" strokeLinecap="round" />
+                <path d={MP} fill="none"
+                  stroke={isDark ? '#A29BFE' : '#6C5CE7'}
+                  strokeWidth="3" strokeLinecap="round"
+                  strokeDasharray="65 215" className="ul-trail" style={{ opacity: 0.7 }} />
+                <circle r="7" fill={isDark ? '#A29BFE' : '#6C5CE7'} className="ul-ball" />
+              </svg>
+              <p style={{ fontSize: 14, margin: 0, color: isDark ? '#A29BFE' : '#6C5CE7', fontFamily: 'Inter, -apple-system, sans-serif' }}>
+                检查表格是否已存在...
+              </p>
+            </div>
+          )}
+
+          {/* ── Phase: confirm_replace ── */}
+          {phase === 'confirm_replace' && duplicate && currentFile && (
+            <div style={{
+              width: '100%', borderRadius: 24, padding: '28px 28px 24px',
+              background: isDark ? 'rgba(26,29,46,0.50)' : 'rgba(255,255,255,0.72)',
+              backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+              border: `1.5px solid ${isDark ? 'rgba(255,185,70,0.22)' : 'rgba(245,158,11,0.22)'}`,
+              boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.28)' : '0 8px 24px rgba(245,158,11,0.08)',
+              animation: 'up-enter 0.4s ease',
+            }}>
+              {/* Warning header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10,
+                  background: 'rgba(245,158,11,0.12)',
+                  border: '1px solid rgba(245,158,11,0.25)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  <svg viewBox="0 0 20 20" width={18} height={18} fill="none">
+                    <path d="M10 3L18 17H2L10 3Z" stroke="#F59E0B" strokeWidth="1.5" strokeLinejoin="round" />
+                    <path d="M10 9v4M10 15v.5" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 500, color: isDark ? '#E8ECF3' : '#1A1D2E', fontFamily: 'Inter, -apple-system, sans-serif' }}>
+                    发现同名表格
+                  </div>
+                  <div style={{ fontSize: 12, color: isDark ? '#5F6B7A' : '#9CA3B4', fontFamily: 'Inter, -apple-system, sans-serif' }}>
+                    已存在名为 <span style={{ color: isDark ? '#A29BFE' : '#6C5CE7', fontWeight: 500 }}>{duplicate.name}</span> 的数据集，是否用新文件更新？
+                  </div>
+                </div>
+              </div>
+
+              {/* Comparison */}
+              <div style={{
+                display: 'grid', gridTemplateColumns: '1fr 32px 1fr', gap: 12,
+                alignItems: 'center', marginBottom: 24,
+              }}>
+                {/* Old */}
+                <div style={{
+                  padding: '14px 16px', borderRadius: 14,
+                  background: isDark ? 'rgba(255,71,87,0.06)' : 'rgba(255,71,87,0.04)',
+                  border: `1px solid ${isDark ? 'rgba(255,71,87,0.14)' : 'rgba(255,71,87,0.12)'}`,
+                }}>
+                  <div style={{ fontSize: 11, color: isDark ? '#5F6B7A' : '#9CA3B4', marginBottom: 6, fontFamily: 'Inter, -apple-system, sans-serif', textTransform: 'uppercase', letterSpacing: '0.5px' }}>当前数据</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: isDark ? '#E8ECF3' : '#1A1D2E', marginBottom: 4, fontFamily: 'Inter, -apple-system, sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{duplicate.name}</div>
+                  <div style={{ fontSize: 12, color: isDark ? '#5F6B7A' : '#9CA3B4', fontFamily: 'Inter, -apple-system, sans-serif' }}>
+                    {duplicate.row_count.toLocaleString()} 行 · {duplicate.column_count} 字段
+                  </div>
+                  <div style={{ fontSize: 11, color: isDark ? '#3D4256' : '#C4CBD6', marginTop: 4, fontFamily: 'Inter, -apple-system, sans-serif' }}>
+                    {new Date(duplicate.created_at).toLocaleDateString('zh-CN')}
+                  </div>
+                </div>
+
+                {/* Arrow */}
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <svg viewBox="0 0 24 24" width={20} height={20} fill="none"
+                    stroke={isDark ? '#5F6B7A' : '#9CA3B4'} strokeWidth="1.5"
+                    strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                  </svg>
+                </div>
+
+                {/* New */}
+                <div style={{
+                  padding: '14px 16px', borderRadius: 14,
+                  background: isDark ? 'rgba(0,200,140,0.06)' : 'rgba(0,200,140,0.04)',
+                  border: `1px solid ${isDark ? 'rgba(0,200,140,0.18)' : 'rgba(0,200,140,0.15)'}`,
+                }}>
+                  <div style={{ fontSize: 11, color: isDark ? '#5F6B7A' : '#9CA3B4', marginBottom: 6, fontFamily: 'Inter, -apple-system, sans-serif', textTransform: 'uppercase', letterSpacing: '0.5px' }}>新文件</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: isDark ? '#E8ECF3' : '#1A1D2E', marginBottom: 4, fontFamily: 'Inter, -apple-system, sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentFile.name}</div>
+                  <div style={{ fontSize: 12, color: isDark ? '#5F6B7A' : '#9CA3B4', fontFamily: 'Inter, -apple-system, sans-serif' }}>
+                    {formatSize(currentFile.size)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => doUpload(currentFile)}
+                  style={{
+                    flex: 1, padding: '10px 16px', borderRadius: 12,
+                    border: `1px solid ${isDark ? 'rgba(162,155,254,0.15)' : 'rgba(108,92,231,0.15)'}`,
+                    background: 'transparent',
+                    color: isDark ? '#9CA3B4' : '#5F6B7A',
+                    fontSize: 13, cursor: 'pointer', fontFamily: 'Inter, -apple-system, sans-serif',
+                  }}
+                >
+                  另存为新表
+                </button>
+                <button
+                  onClick={() => doUpload(currentFile, duplicate.id)}
+                  style={{
+                    flex: 1, padding: '10px 16px', borderRadius: 12, border: 'none',
+                    background: 'linear-gradient(135deg, #F59E0B 0%, #FCD34D 100%)',
+                    color: '#1A1D2E', fontSize: 13, fontWeight: 500,
+                    cursor: 'pointer', fontFamily: 'Inter, -apple-system, sans-serif',
+                    boxShadow: '0 4px 14px rgba(245,158,11,0.30)',
+                  }}
+                >
+                  更新数据（删除旧数据）
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ── Phase: preview ── */}
           {phase === 'preview' && dataset && (
             <SchemaPreview
@@ -655,21 +1008,98 @@ export default function UploadPage() {
           )}
 
           {/* ── Recent datasets ── */}
-          {phase !== 'success' && recentDatasets.length > 0 && (
+          {phase !== 'success' && phase !== 'confirm_replace' && recentDatasets.length > 0 && (
             <div style={{ marginTop: 32 }}>
-              <p style={{
-                fontSize: 11, fontWeight: 600, letterSpacing: '0.5px',
-                textTransform: 'uppercase', color: isDark ? '#5F6B7A' : '#9CA3B4',
-                marginBottom: 12,
-                fontFamily: 'Inter, -apple-system, sans-serif',
-              }}>
-                Recent datasets
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <p style={{
+                  fontSize: 11, fontWeight: 600, letterSpacing: '0.5px',
+                  textTransform: 'uppercase', color: isDark ? '#5F6B7A' : '#9CA3B4',
+                  margin: 0, fontFamily: 'Inter, -apple-system, sans-serif',
+                }}>
+                  Recent datasets
+                </p>
+                <button
+                  onClick={() => navigate('/chat')}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    color: isDark ? '#A29BFE' : '#6C5CE7', fontSize: 12,
+                    fontFamily: 'Inter, -apple-system, sans-serif',
+                  }}
+                >
+                  查看全部
+                  <svg viewBox="0 0 16 16" width={12} height={12} fill="none"
+                    stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M6 3l5 5-5 5" />
+                  </svg>
+                </button>
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {recentDatasets.slice(0, 5).map((ds) => (
-                  <RecentItem key={ds.id} ds={ds} isDark={isDark} />
+                  <RecentItem key={ds.id} ds={ds} isDark={isDark} onDelete={handleDelete} onError={setError} />
                 ))}
               </div>
+              {recentDatasets.length > 5 && (
+                <button
+                  onClick={() => navigate('/chat')}
+                  style={{
+                    width: '100%', marginTop: 8, padding: '10px', borderRadius: 12,
+                    background: 'none', cursor: 'pointer',
+                    border: `1px dashed ${isDark ? 'rgba(162,155,254,0.12)' : 'rgba(108,92,231,0.12)'}`,
+                    color: isDark ? '#5F6B7A' : '#9CA3B4', fontSize: 12,
+                    fontFamily: 'Inter, -apple-system, sans-serif',
+                  }}
+                >
+                  还有 {recentDatasets.length - 5} 个数据集 · 点击查看全部
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ── Trash (admin only) ── */}
+          {isAdmin && phase !== 'success' && phase !== 'confirm_replace' && (
+            <div style={{ marginTop: 24 }}>
+              <button
+                onClick={() => setTrashOpen((o) => !o)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0', marginBottom: trashOpen ? 10 : 0,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <svg viewBox="0 0 16 16" width={13} height={13} fill="none"
+                    stroke={isDark ? '#5F6B7A' : '#9CA3B4'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 4h12M6 4V2h4v2M5 4l1 9h4l1-9" />
+                  </svg>
+                  <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', color: isDark ? '#5F6B7A' : '#9CA3B4', fontFamily: 'Inter, -apple-system, sans-serif' }}>
+                    回收站{trashDatasets.length > 0 ? ` (${trashDatasets.length})` : ''}
+                  </span>
+                </div>
+                <svg viewBox="0 0 16 16" width={12} height={12} fill="none"
+                  stroke={isDark ? '#5F6B7A' : '#9CA3B4'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ transform: trashOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                  <path d="M3 6l5 5 5-5" />
+                </svg>
+              </button>
+              {trashOpen && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {trashDatasets.length === 0 ? (
+                    <div style={{
+                      padding: '16px', borderRadius: 12, textAlign: 'center',
+                      background: isDark ? 'rgba(26,29,46,0.25)' : 'rgba(255,255,255,0.40)',
+                      border: `1px dashed ${isDark ? 'rgba(162,155,254,0.08)' : 'rgba(108,92,231,0.08)'}`,
+                      color: isDark ? '#3D4256' : '#C4CBD6',
+                      fontSize: 12, fontFamily: 'Inter, -apple-system, sans-serif',
+                    }}>
+                      回收站为空
+                    </div>
+                  ) : (
+                    trashDatasets.map((ds) => (
+                      <TrashItem key={ds.id} ds={ds} isDark={isDark} onRestore={handleRestore} />
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           )}
 

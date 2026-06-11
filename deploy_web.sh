@@ -1,19 +1,14 @@
 #!/bin/bash
-# Deploy updated frontend to server
-# Usage: ./deploy_web.sh <server_user>@<server_ip>
-# Example: ./deploy_web.sh root@47.113.187.130
+# Deploy frontend to 内网服务器
+# Usage: ./deploy_web.sh
 
-SERVER=${1:-"root@47.113.187.130"}
-REMOTE_DIR="/opt/metadatahub"
+SERVER=root@10.2.38.146
+WEB_DIR=/opt/metadatahub-web
 
-echo "=== Syncing web app to $SERVER ==="
-rsync -avz --delete \
-  --exclude='node_modules' \
-  --exclude='dist' \
-  --exclude='.git' \
-  apps/web/ "$SERVER:$REMOTE_DIR/apps/web/"
+echo "=== 1. Building frontend ==="
+cd apps/web && pnpm build && cd ../..
 
-echo "=== Rebuilding and restarting nginx container ==="
-ssh "$SERVER" "cd $REMOTE_DIR && docker compose -f docker-compose.prod.yml build nginx && docker compose -f docker-compose.prod.yml up -d nginx"
+echo "=== 2. Syncing dist to $SERVER ==="
+rsync -avz --delete apps/web/dist/ $SERVER:$WEB_DIR/
 
-echo "=== Done! Frontend redeployed. ==="
+echo "=== Done! Frontend deployed to http://10.2.38.146 ==="

@@ -92,6 +92,7 @@ import type {
   DatasetAccessItem,
   DatasetDetail,
   GenerateCodeResponse,
+  HtmlDashboardItem,
   PreviewRequest,
   ProviderTestResponse,
   PublicBranding,
@@ -155,19 +156,39 @@ export const aiAdminApi = {
     api.put<TaskRoutingOut[]>('/admin/ai/task-routing', data),
 }
 
+export interface DuplicateCheckMatch {
+  exists: true
+  dataset: {
+    id: string
+    name: string
+    row_count: number
+    column_count: number
+    columns: string[]
+    created_at: string
+  }
+}
+export type DuplicateCheck = { exists: false } | DuplicateCheckMatch
+
 export const datasetsApi = {
-  upload: (file: File) => {
+  upload: (file: File, replaceDatasetId?: string) => {
     const form = new FormData()
     form.append('file', file)
+    if (replaceDatasetId) form.append('replace_dataset_id', replaceDatasetId)
     return api.post<DatasetDetail>('/datasets/upload', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  checkName: (name: string) =>
+    api.get<DuplicateCheck>(`/datasets/check-name?name=${encodeURIComponent(name)}`),
   list: () => api.get<Dataset[]>('/datasets'),
   get: (id: string) => api.get<DatasetDetail>(`/datasets/${id}`),
   preview: (id: string, limit = 20) => api.get(`/datasets/${id}/preview?limit=${limit}`),
   fieldValues: (id: string, field: string) =>
     api.get<string[]>(`/datasets/${id}/field-values?field=${encodeURIComponent(field)}`),
+  delete: (id: string) => api.delete(`/datasets/${id}`),
+  download: (id: string) => api.get(`/datasets/${id}/download`, { responseType: 'blob' }),
+  trash: () => api.get<Dataset[]>('/datasets/trash'),
+  restore: (id: string) => api.post<{ id: string; restored: boolean }>(`/datasets/${id}/restore`),
 }
 
 export const queryApi = {
@@ -240,6 +261,26 @@ export const adminApi = {
     api.post<RlsRuleItem>(`/admin/datasets/${datasetId}/rls-rules`, data),
   deleteRlsRule: (ruleId: string) =>
     api.delete(`/admin/rls-rules/${ruleId}`),
+}
+
+export const htmlDashboardsApi = {
+  list: () => api.get<HtmlDashboardItem[]>('/html-dashboards'),
+  get: (id: string) => api.get<HtmlDashboardItem>(`/html-dashboards/${id}`),
+  upload: (file: File, name: string, description: string, datasetIds: string[], initFunctionName?: string) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('name', name)
+    if (description) form.append('description', description)
+    form.append('dataset_ids', JSON.stringify(datasetIds))
+    if (initFunctionName) form.append('init_function_name', initFunctionName)
+    return api.post<HtmlDashboardItem>('/html-dashboards/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  delete: (id: string) => api.delete(`/html-dashboards/${id}`),
+  update: (id: string, data: { dataset_ids?: string[]; init_function_name?: string; name?: string; description?: string }) =>
+    api.patch<HtmlDashboardItem>(`/html-dashboards/${id}`, data),
+  viewUrl: (id: string) => `/api/v1/html-dashboards/${id}/view`,
 }
 
 export default api

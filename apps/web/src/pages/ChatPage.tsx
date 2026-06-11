@@ -428,12 +428,13 @@ function SaveToDashboardModal({
 
 // ── State A: Dataset Selector ─────────────────────────────────────────────────
 function DatasetSelectorView({
-  datasets, loading, onSelect, isDark,
+  datasets, loading, onSelect, onDelete, isDark,
 }: {
-  datasets: Dataset[]; loading: boolean; onSelect: (id: string) => void; isDark: boolean
+  datasets: Dataset[]; loading: boolean; onSelect: (id: string) => void; onDelete: (id: string) => void; isDark: boolean
 }) {
   const navigate = useNavigate()
-  const [hovered, setHovered] = useState<string | null>(null)
+  const [hovered,      setHovered]      = useState<string | null>(null)
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
 
   const cardBg     = isDark ? 'rgba(26,29,46,0.45)'   : 'rgba(255,255,255,0.72)'
   const cardBorder = isDark ? 'rgba(162,155,254,0.08)' : 'rgba(108,92,231,0.08)'
@@ -491,25 +492,30 @@ function DatasetSelectorView({
                 animationDelay: `${i * 0.2}s`,
               }} />
             ))
-          ) : datasets.map((ds) => (
+          ) : datasets.map((ds) => {
+            const isConfirming = confirmingId === ds.id
+            const isHov = hovered === ds.id
+            return (
             <div key={ds.id}
-              onClick={() => onSelect(ds.id)}
+              onClick={() => !isConfirming && onSelect(ds.id)}
               onMouseEnter={() => setHovered(ds.id)}
-              onMouseLeave={() => setHovered(null)}
+              onMouseLeave={() => { setHovered(null); setConfirmingId(null) }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 14,
                 padding: '14px 18px',
                 borderRadius: 16,
-                border: `1px solid ${hovered === ds.id ? hoverBorder : cardBorder}`,
-                background: hovered === ds.id
-                  ? isDark ? 'rgba(42,37,80,0.45)' : 'rgba(255,255,255,0.9)'
-                  : cardBg,
+                border: `1px solid ${isConfirming
+                  ? isDark ? 'rgba(255,71,87,0.25)' : 'rgba(255,71,87,0.20)'
+                  : isHov ? hoverBorder : cardBorder}`,
+                background: isConfirming
+                  ? isDark ? 'rgba(255,71,87,0.06)' : 'rgba(255,71,87,0.04)'
+                  : isHov ? (isDark ? 'rgba(42,37,80,0.45)' : 'rgba(255,255,255,0.9)') : cardBg,
                 backdropFilter: 'blur(12px)',
                 WebkitBackdropFilter: 'blur(12px)',
-                cursor: 'pointer',
-                transform: hovered === ds.id ? 'translateY(-1px)' : 'translateY(0)',
+                cursor: isConfirming ? 'default' : 'pointer',
+                transform: isHov && !isConfirming ? 'translateY(-1px)' : 'translateY(0)',
                 transition: 'all 0.2s',
-                boxShadow: hovered === ds.id
+                boxShadow: isHov && !isConfirming
                   ? isDark ? '0 6px 20px rgba(0,0,0,0.3)' : '0 4px 16px rgba(108,92,231,0.12)'
                   : 'none',
               }}
@@ -528,15 +534,61 @@ function DatasetSelectorView({
                   {ds.row_count.toLocaleString()} 行 · {ds.column_count} 字段 · {ds.source_type.toUpperCase()}
                 </div>
               </div>
-              <svg viewBox="0 0 16 16" width={16} height={16} fill="none"
-                stroke={hovered === ds.id ? (isDark ? '#A29BFE' : '#6C5CE7') : (isDark ? '#3D4256' : '#C4CBD6')}
-                strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-                style={{ flexShrink: 0, transition: 'stroke 0.2s' }}
-              >
-                <path d="M6 3l5 5-5 5" />
-              </svg>
+
+              {isConfirming ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
+                  onClick={e => e.stopPropagation()}>
+                  <span style={{ fontSize: 12, color: '#FF4757', fontFamily: 'Inter, -apple-system, sans-serif' }}>确认删除?</span>
+                  <button
+                    onClick={e => { e.stopPropagation(); onDelete(ds.id); setConfirmingId(null) }}
+                    style={{
+                      padding: '4px 10px', borderRadius: 7, border: 'none',
+                      background: '#FF4757', color: '#fff', fontSize: 12,
+                      cursor: 'pointer', fontFamily: 'Inter, -apple-system, sans-serif',
+                    }}
+                  >删除</button>
+                  <button
+                    onClick={e => { e.stopPropagation(); setConfirmingId(null) }}
+                    style={{
+                      padding: '4px 10px', borderRadius: 7,
+                      border: `1px solid ${isDark ? 'rgba(162,155,254,0.15)' : 'rgba(108,92,231,0.15)'}`,
+                      background: 'transparent', color: isDark ? '#9CA3B4' : '#5F6B7A',
+                      fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, -apple-system, sans-serif',
+                    }}
+                  >取消</button>
+                </div>
+              ) : (
+                <>
+                  {isHov && (
+                    <button
+                      onClick={e => { e.stopPropagation(); setConfirmingId(ds.id) }}
+                      title="删除"
+                      style={{
+                        width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                        background: 'rgba(255,71,87,0.08)',
+                        border: '1px solid rgba(255,71,87,0.18)',
+                        color: '#FF4757', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <svg viewBox="0 0 16 16" width={13} height={13} fill="none"
+                        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 4h12M6 4V2h4v2M5 4l1 9h4l1-9" />
+                      </svg>
+                    </button>
+                  )}
+                  <svg viewBox="0 0 16 16" width={16} height={16} fill="none"
+                    stroke={isHov ? (isDark ? '#A29BFE' : '#6C5CE7') : (isDark ? '#3D4256' : '#C4CBD6')}
+                    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+                    style={{ flexShrink: 0, transition: 'stroke 0.2s' }}
+                  >
+                    <path d="M6 3l5 5-5 5" />
+                  </svg>
+                </>
+              )}
             </div>
-          ))}
+            )
+          })}
 
           {/* Upload button */}
           <div
@@ -836,6 +888,12 @@ export default function ChatPage() {
     } catch { message.error('加载对话失败') }
   }, [])
 
+  const handleDeleteDataset = (id: string) => {
+    datasetsApi.delete(id)
+      .then(() => datasetsApi.list().then(res => setDatasets(res.data)))
+      .catch(() => {})
+  }
+
   // Load datasets
   useEffect(() => {
     datasetsApi.list()
@@ -991,6 +1049,7 @@ export default function ChatPage() {
           datasets={datasets}
           loading={datasetsLoading}
           onSelect={handleSelectDataset}
+          onDelete={handleDeleteDataset}
           isDark={isDark}
         />
       </div>

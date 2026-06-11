@@ -1,5 +1,7 @@
 import {
   AppstoreOutlined,
+  BarChartOutlined,
+  CodeOutlined,
   DashboardOutlined,
   LockOutlined,
   MessageOutlined,
@@ -91,7 +93,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         { key: '/chat',        icon: <MessageOutlined />,   label: '数据对话',   enabled: true,       visible: true },
         { key: '/dashboard',   icon: <DashboardOutlined />, label: '数据看板',   enabled: true,       visible: true },
         { key: '/workspace',   icon: <TeamOutlined />,      label: '工作台',     enabled: true,       visible: role==='ops_manager'||role==='partner_manager'||role==='admin' },
-        { key: '/partners',    icon: <TeamOutlined />,      label: '伙伴看板',   enabled: true,       visible: true },
+        { key: '/partners',         icon: <TeamOutlined />,  label: '伙伴看板',   enabled: true, visible: true },
+        { key: '/html-dashboards',  icon: <CodeOutlined />,      label: 'HTML 看板',  enabled: true, visible: true },
+        { key: '/kpi',              icon: <BarChartOutlined />,  label: '月度经营',   enabled: true, visible: true },
       ],
     },
     {
