@@ -185,20 +185,33 @@ async def kpi_summary(
                     "amount": round(float(row[2] or 0) / 10000, 1),
                 })
 
-    # ── 认证级新增日度趋势 ────────────────────────────────────────────────────
+    # ── 认证级新增月度趋势 + 同比 ─────────────────────────────────────────────
     cert_trend: list[dict] = []
     if ds_cert:
         t = f"dataset_{ds_cert.id.hex}"
         cols = [c["name"] for c in ds_cert.schema_info.get("columns", [])]
         date_col = next((c for c in cols if "日期" in c or "时间" in c or "创建" in c), None)
         if date_col:
+            # 获取本年和去年的月度数据
             rows = _safe_query(
-                f'SELECT SUBSTR(CAST("{date_col}" AS VARCHAR), 1, 10) AS da, COUNT(*) AS cnt '
+                f'SELECT SUBSTR(CAST("{date_col}" AS VARCHAR), 1, 7) AS mo, COUNT(*) AS cnt '
                 f'FROM "{t}" WHERE "{date_col}" IS NOT NULL '
-                f'GROUP BY da ORDER BY da', t)
+                f'GROUP BY mo ORDER BY mo', t)
+            # 按年份和月份组织数据
+            trend_by_month: dict[str, dict] = {}
             for row in rows:
                 if row[0] and str(row[0]).strip():
-                    cert_trend.append({"date": str(row[0]), "count": int(row[1] or 0)})
+                    mo_str = str(row[0])  # YYYY-MM
+                    month = mo_str[5:7]  # MM
+                    year = mo_str[0:4]   # YYYY
+                    if month not in trend_by_month:
+                        trend_by_month[month] = {}
+                    trend_by_month[month][year] = int(row[1] or 0)
+            # 转换为前端需要的格式 [{"month": "01", "2025": 30, "2026": 16}, ...]
+            for month in sorted(trend_by_month.keys()):
+                item = {"month": month}
+                item.update(trend_by_month[month])
+                cert_trend.append(item)
 
     # ── 数据来源说明 ──────────────────────────────────────────────────────────
     sources = {

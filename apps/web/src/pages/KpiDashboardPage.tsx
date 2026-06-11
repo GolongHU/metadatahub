@@ -31,7 +31,7 @@ const card: React.CSSProperties = {
 
 interface KpiItem  { value: number; target: number; label: string; unit: string }
 interface Region   { name: string; count: number; amount: number }
-interface Trend    { date: string; count: number }
+interface Trend    { month: string; [key: string]: string | number }
 interface PriLayer { name: string; count: number; color: string }
 interface SummaryData {
   kpis: Record<string, KpiItem>
@@ -201,15 +201,50 @@ export default function KpiDashboardPage() {
 
   const kpis = data?.kpis || {}
 
-  // Chart.js-style cert trend via ECharts (daily granularity)
-  const certOpt = data?.cert_trend?.length ? {
-    backgroundColor: 'transparent',
-    grid: { top:8, bottom:28, left:36, right:12 },
-    xAxis: { type:'category', data: data.cert_trend.map(t => t.date.slice(5)), axisLabel:{fontSize:9,color:T.text3,interval:Math.max(0,Math.floor(data.cert_trend.length/20)-1)}, axisLine:{lineStyle:{color:T.border}}, axisTick:{show:false} },
-    yAxis: { type:'value', axisLabel:{fontSize:10,color:T.text3}, splitLine:{lineStyle:{color:T.border,type:'dashed'}}, axisLine:{show:false} },
-    series: [{ type:'bar', data: data.cert_trend.map(t=>t.count), itemStyle:{color:T.blue, borderRadius:[4,4,0,0]}, barMaxWidth:8 }],
-    tooltip: { trigger:'axis', backgroundColor:'#111827', borderColor:'transparent', textStyle:{color:'#f9fafb',fontSize:12}, formatter:(p:{axisValue:string;value:number}[])=>`${p[0].axisValue}: ${p[0].value}家` },
-  } : null
+  // Cert trend: monthly comparison with 2025 vs 2026
+  const certOpt = data?.cert_trend?.length ? (() => {
+    const months = data.cert_trend.map(t => `${parseInt(t.month)}月`)
+    const years = [...new Set(data.cert_trend.flatMap(t => Object.keys(t).filter(k => k !== 'month' && !isNaN(+k))))] as string[]
+    const series: any[] = []
+
+    // Add bar chart for current year (usually 2026)
+    const currentYear = years.includes('2026') ? '2026' : years[years.length - 1]
+    if (currentYear) {
+      series.push({
+        name: `${currentYear}年新增`,
+        type: 'bar',
+        data: data.cert_trend.map(t => (t as any)[currentYear] || 0),
+        itemStyle: { color: T.blue, borderRadius: [4, 4, 0, 0] },
+        barMaxWidth: 16,
+        yAxisIndex: 0,
+      })
+    }
+
+    // Add line chart for previous year (usually 2025)
+    const prevYear = years.find(y => y !== currentYear)
+    if (prevYear) {
+      series.push({
+        name: `${prevYear}年新增`,
+        type: 'line',
+        data: data.cert_trend.map(t => (t as any)[prevYear] || 0),
+        stroke: { color: '#9ca3af' },
+        lineStyle: { type: 'dashed', color: '#9ca3af' },
+        itemStyle: { color: '#9ca3af' },
+        smooth: true,
+        yAxisIndex: 0,
+      })
+    }
+
+    return {
+      backgroundColor: 'transparent',
+      legend: { show: true, top: 0, right: 0, textStyle: { fontSize: 11, color: T.text3 } },
+      grid: { top: 32, bottom: 28, left: 36, right: 12 },
+      xAxis: { type: 'category', data: months, axisLabel: { fontSize: 11, color: T.text3 }, axisLine: { lineStyle: { color: T.border } }, axisTick: { show: false } },
+      yAxis: { type: 'value', axisLabel: { fontSize: 10, color: T.text3 }, splitLine: { lineStyle: { color: T.border, type: 'dashed' } }, axisLine: { show: false } },
+      series,
+      tooltip: { trigger: 'axis', backgroundColor: '#111827', borderColor: 'transparent', textStyle: { color: '#f9fafb', fontSize: 12 } },
+    }
+  })() : null
 
   // Region bar chart
   const regionOpt = data?.region_breakdown?.length ? {
@@ -431,10 +466,12 @@ export default function KpiDashboardPage() {
               <div style={{ display:'flex', alignItems:'center', gap:16, flexWrap:'wrap', justifyContent:'flex-end' }}>
                 <span style={{ fontSize:11, color:T.text3 }}>数据截至 {appliedMonth ? `${appliedMonth.slice(0,4)}年${parseInt(appliedMonth.slice(5))}月` : '最新上传'}</span>
                 {data.cert_trend.length > 0 && (() => {
-                  const totalCert = data.cert_trend.reduce((s,t)=>s+t.count,0)
+                  const years = [...new Set(data.cert_trend.flatMap(t => Object.keys(t).filter(k => k !== 'month' && !isNaN(+k))))] as string[]
+                  const currentYear = years.includes('2026') ? '2026' : years[years.length - 1]
+                  const totalCert = data.cert_trend.reduce((s,t) => s + ((t as any)[currentYear] || 0), 0)
                   return (
                     <span style={{ fontSize:11, background:'#EEF7F5', color:'#4a8080', padding:'2px 8px', borderRadius:6, fontWeight:600, whiteSpace:'nowrap' }}>
-                      累计 {totalCert} 家 &nbsp;<span style={{ color:'#16A34A' }}>+29%↑</span>
+                      1-{data.cert_trend.length}月累计 {totalCert} 家 &nbsp;<span style={{ color:'#16A34A' }}>+29%↑</span>
                     </span>
                   )
                 })()}
