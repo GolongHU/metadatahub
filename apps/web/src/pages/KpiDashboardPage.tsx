@@ -203,9 +203,16 @@ export default function KpiDashboardPage() {
 
   // Cert trend: monthly comparison with 2025 vs 2026
   const certOpt = data?.cert_trend?.length ? (() => {
-    const months = data.cert_trend.map(t => `${parseInt(t.month)}月`)
-    const years = [...new Set(data.cert_trend.flatMap(t => Object.keys(t).filter(k => k !== 'month' && !isNaN(+k))))] as string[]
+    const months = data.cert_trend.map(t => {
+      const mo = String(t.month).padStart(2, '0')
+      return `${parseInt(mo)}月`
+    })
+    const years = [...new Set(data.cert_trend.flatMap(t => Object.keys(t).filter(k => k !== 'month' && !isNaN(Number(k)))))] as string[]
     const series: any[] = []
+
+    if (years.length === 0) {
+      return null
+    }
 
     // Add bar chart for current year (usually 2026)
     const currentYear = years.includes('2026') ? '2026' : years[years.length - 1]
@@ -213,7 +220,7 @@ export default function KpiDashboardPage() {
       series.push({
         name: `${currentYear}年新增`,
         type: 'bar',
-        data: data.cert_trend.map(t => (t as any)[currentYear] || 0),
+        data: data.cert_trend.map(t => Number((t as any)[currentYear]) || 0),
         itemStyle: { color: T.blue, borderRadius: [4, 4, 0, 0] },
         barMaxWidth: 16,
         yAxisIndex: 0,
@@ -226,10 +233,10 @@ export default function KpiDashboardPage() {
       series.push({
         name: `${prevYear}年新增`,
         type: 'line',
-        data: data.cert_trend.map(t => (t as any)[prevYear] || 0),
-        stroke: { color: '#9ca3af' },
-        lineStyle: { type: 'dashed', color: '#9ca3af' },
+        data: data.cert_trend.map(t => Number((t as any)[prevYear]) || 0),
+        lineStyle: { type: 'dashed', color: '#9ca3af', width: 2 },
         itemStyle: { color: '#9ca3af' },
+        symbolSize: 4,
         smooth: true,
         yAxisIndex: 0,
       })
